@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./styles/global.css";
 import { useHashRoute, Link } from "./router/hash.js";
 import { useTown } from "./store/useTown.js";
+import { useTheme } from "./store/useTheme.js";
 import { TownView } from "./views/TownView.js";
 import { HerdView } from "./views/HerdView.js";
 import { FeedView } from "./views/FeedView.js";
@@ -15,6 +16,7 @@ import { LlamaView } from "./views/LlamaView.js";
 export default function App() {
   const [route] = useHashRoute();
   const { state, connected } = useTown();
+  const { theme, toggle, isDark } = useTheme();
   const [isTurning, setIsTurning] = useState(false);
   const [followPick, setFollowPick] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export default function App() {
     <>
       <header className="masthead">
         <h1 style={{ fontFamily: "Instrument Serif" }}>Hermesbook</h1>
-        <span className="mono" style={{ fontSize: 10, background: connected ? "#efe" : "#fee", border: "1px solid #d8d2c6", padding: "2px 6px", borderRadius: 10 }}>{connected ? "● live" : "○ offline"}</span>
+        <span className="mono" style={{ fontSize: 10, background: connected ? "color-mix(in srgb, var(--field) 70%, transparent)" : "color-mix(in srgb, #fee 60%, var(--paper) 40%)", border: "1px solid var(--hair)", padding: "2px 6px", borderRadius: 10, color: "var(--muted)" }}>{connected ? "● live" : "○ offline"}</span>
         <nav style={{ marginLeft: 12 }}>
           <Link to="town" className={page === "town" ? "active" : ""}>Town</Link>
           <Link to="herd" className={page === "herd" ? "active" : ""}>Herd</Link>
@@ -74,7 +76,13 @@ export default function App() {
           <Link to="coin" className={page === "coin" ? "active" : ""}>Coin</Link>
           <Link to="docs" className={page === "docs" ? "active" : ""}>Docs</Link>
         </nav>
-        <div className="mono" style={{ marginLeft: "auto", fontSize: 11, color: "#6e675d" }}>{state.herd.length}/{state.config.maxHerd} · {state.feed.length} posts · {state.config.ticker}</div>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <button className="theme-toggle" onClick={toggle} aria-label={`Aktifkan mode ${isDark ? "terang" : "gelap"}`} title={`Tema: ${theme} — klik untuk ganti`}>
+            <span className="dot" aria-hidden />
+            <span>{isDark ? "Gelap" : "Terang"}</span>
+          </button>
+          <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{state.herd.length}/{state.config.maxHerd} · {state.feed.length} posts · {state.config.ticker}</div>
+        </div>
       </header>
 
       <main className={"page" + (isTurning ? " turning" : "")}>
@@ -93,7 +101,7 @@ export default function App() {
         )}
       </main>
 
-      <footer className="mono" style={{ textAlign: "center", padding: "18px 24px", fontSize: 11, color: "#a49c90", borderTop: "1px solid #d8d2c6", marginTop: 24 }}>
+      <footer className="mono" style={{ textAlign: "center", padding: "18px 24px", fontSize: 11, color: "var(--faint)", borderTop: "1px solid var(--hair)", marginTop: 24 }}>
         Hermesbook · Base · 210×128 tiles · Dual-Brain Sim fallback · Built from Llamabook reverse engineering
         {followPick && <span style={{ marginLeft: 12 }}>Following <strong>{state.herd.find((h) => h.id === followPick)?.name ?? followPick.slice(0, 8)}</strong> · <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => setFollowPick(null)}>clear</button></span>}
       </footer>

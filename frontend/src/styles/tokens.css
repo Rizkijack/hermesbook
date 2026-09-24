@@ -9,11 +9,32 @@
   --hair: #d8d2c6;
   --mark: #e8e3d7;
   --accent: #c9a86a;
+  --field: #cfe8c0;
+  --field-hill: #b8d8a8;
   --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
+[data-theme="dark"] {
+  --paper: #0f0e0d;
+  --paper-2: #1c1a18;
+  --ink: #f2ede6;
+  --ink-2: #d8d2c6;
+  --muted: #a49c90;
+  --faint: #7a7369;
+  --rule: #2e2a25;
+  --hair: #2e2a25;
+  --mark: #252220;
+  --accent: #c9a86a;
+  --field: #1e2e22;
+  --field-hill: #243628;
+}
+
 * { box-sizing: border-box; }
+
+html {
+  color-scheme: light dark;
+}
 
 body {
   margin: 0;
@@ -21,6 +42,7 @@ body {
   color: var(--ink);
   font-family: var(--serif);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.28s ease, color 0.28s ease;
 }
 
 body::before {
@@ -30,7 +52,7 @@ body::before {
   pointer-events: none;
   z-index: 100;
   opacity: 0.5;
-  background-image: radial-gradient(circle at 1px 1px, rgba(27, 25, 21, 0.045) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 4.5%, transparent) 1px, transparent 0);
   background-size: 4px 4px;
 }
 
@@ -44,6 +66,7 @@ body::before {
   position: sticky;
   top: 0;
   z-index: 10;
+  transition: background-color 0.28s ease, border-color 0.28s ease;
 }
 
 .masthead h1 {
@@ -66,6 +89,7 @@ body::before {
   text-decoration: none;
   border-bottom: 1px solid transparent;
   padding-bottom: 2px;
+  transition: color 0.2s ease, border-color 0.2s ease;
 }
 
 .masthead nav a.active,
@@ -94,6 +118,7 @@ body::before {
   border: 1px solid var(--hair);
   padding: 16px;
   border-radius: 6px;
+  transition: background-color 0.28s ease, border-color 0.28s ease;
 }
 
 .mono { font-family: var(--mono); }
@@ -113,10 +138,11 @@ body::before {
   color: var(--paper);
   cursor: pointer;
   border-radius: 4px;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 .btn:hover { background: var(--ink-2); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-ghost { background: transparent; color: var(--ink); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--hair); }
 .btn-ghost:hover { background: var(--mark); }
 
 .grid { display: grid; gap: 16px; }
@@ -129,6 +155,51 @@ canvas.town {
   width: 100%;
   height: auto;
   border: 2px solid var(--rule);
-  background: #cfe8c0;
+  background: var(--field);
   image-rendering: pixelated;
+  transition: border-color 0.28s ease, background-color 0.28s ease;
+}
+
+/* theme toggle */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border: 1px solid var(--hair);
+  background: var(--paper-2);
+  color: var(--muted);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.22s ease;
+}
+.theme-toggle:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: var(--mark);
+}
+.theme-toggle .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.28s ease;
+}
+.theme-toggle .dot::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+[data-theme="dark"] .theme-toggle .dot::before {
+  transform: translateX(4px) scale(0.85);
+  opacity: 0.9;
 }

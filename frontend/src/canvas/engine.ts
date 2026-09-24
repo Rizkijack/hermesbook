@@ -377,10 +377,13 @@ export class Xf {
     ctx.scale(cam.zoom, cam.zoom);
     ctx.translate(-cam.x, -cam.y);
 
-    ctx.fillStyle = "#cfe8c0";
+    const isDarkTheme = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "dark";
+    const fieldCol = typeof document !== "undefined" ? (getComputedStyle(document.documentElement).getPropertyValue("--field").trim() || (isDarkTheme ? "#1e2e22" : "#cfe8c0")) : "#cfe8c0";
+    const hillCol = typeof document !== "undefined" ? (getComputedStyle(document.documentElement).getPropertyValue("--field-hill").trim() || (isDarkTheme ? "#243628" : "#b8d8a8")) : "#b8d8a8";
+    ctx.fillStyle = fieldCol;
     ctx.fillRect(0, 0, this.worldW, this.worldH);
 
-    ctx.fillStyle = "#b8d8a8";
+    ctx.fillStyle = hillCol;
     for (let i = 0; i < 30; i++) {
       const x = (i * 137) % this.worldW;
       const y = (i * 241) % this.worldH;
@@ -389,7 +392,7 @@ export class Xf {
       ctx.fill();
     }
 
-    ctx.strokeStyle = "#d8c9a8";
+    ctx.strokeStyle = isDarkTheme ? "#2e2a25" : "#d8c9a8";
     ctx.lineWidth = 8;
     ctx.beginPath();
     for (const loc of LOCATIONS) {
@@ -416,14 +419,18 @@ export class Xf {
           ctx.fillStyle = "rgba(0,0,0,0.08)";
           ctx.fillRect(bx + 6, by + 6, bw, bh);
           const isDark = this.nightIntensity() > 0.5;
-          ctx.fillStyle = isDark ? "#5a4a3a" : "#e8ddd0";
+          if (isDarkTheme) {
+            ctx.fillStyle = isDark ? "#3a302a" : "#2a2622";
+          } else {
+            ctx.fillStyle = isDark ? "#5a4a3a" : "#e8ddd0";
+          }
           ctx.fillRect(bx, by, bw, bh);
-          ctx.strokeStyle = "#1b1915";
+          ctx.strokeStyle = isDarkTheme ? "#3a3530" : "#1b1915";
           ctx.lineWidth = 1;
           ctx.strokeRect(bx, by, bw, bh);
-          ctx.fillStyle = "#8b5a3c";
+          ctx.fillStyle = isDarkTheme ? "#6b4a35" : "#8b5a3c";
           ctx.fillRect(bx - 2, by - 6, bw + 4, 6);
-          ctx.fillStyle = "#1b1915";
+          ctx.fillStyle = isDarkTheme ? "#e8e3d7" : "#1b1915";
           ctx.font = "8px JetBrains Mono";
           ctx.textAlign = "center";
           ctx.fillText(b.name, bx + bw / 2, by + bh + 10);
