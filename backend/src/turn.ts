@@ -12,11 +12,21 @@ export interface OrderEvent {
   secs: number;
 }
 
+export interface SpitEvent {
+  type: "spit";
+  from: string;
+  to: string;
+}
+
 const SECS = 18;
 
-export async function runTurn(world: TownSnapshot, agentId: string, brain?: Brain): Promise<OrderEvent | null> {
+export async function runTurn(
+  world: TownSnapshot,
+  agentId: string,
+  brain?: Brain
+): Promise<{ order: OrderEvent | null; spit?: SpitEvent; post?: TownSnapshot["feed"][number] }> {
   const agent = world.herd.find((h) => h.id === agentId);
-  if (!agent) return null;
+  if (!agent) return { order: null };
 
   // Read phase: gather context
   const clock = dayClock(Date.now(), 900);
@@ -44,9 +54,11 @@ export async function runTurn(world: TownSnapshot, agentId: string, brain?: Brai
   agent.needs = tickNeeds(agent.needs, decision.act, SECS);
   // mood drift
   if (decision.act === "spit") agent.mind.spirits = Math.max(-1, agent.mind.spirits - 0.2);
+  let createdPost: TownSnapshot["feed"][number] | undefined;
+  let spitEvent: SpitEvent | undefined;
   if (decision.speech) {
     // add to feed and memories
-    const post = {
+    const post: TownSnapshot["feed"][number] = {
       id: "p" + Math.random().toString(36).slice(2, 10),
       t: Date.now(),
       by: agent.id,
@@ -60,14 +72,13 @@ export async function runTurn(world: TownSnapshot, agentId: string, brain?: Brai
     if (world.feed.length > 400) world.feed.length = 400;
     agent.mind.memories.unshift(decision.speech.slice(0, 80));
     if (agent.mind.memories.length > 12) agent.mind.memories.length = 12;
+    createdPost = post;
   }
 
-  // occasionally spit
+  // occasionally spit - 4% when arguing with nearby
   if (nearby.length > 0 && rng() < 0.04 && decision.act === "argue") {
     const victim = nearby[Math.floor(rng() * nearby.length)]!;
-    // broadcast will be handled by caller via separate spit event? included as order + post kind spit
-    // For MVP we just add a feed entry
-    world.feed.unshift({
+    const spitPost: TownSnapshot["feed"][number] = {
       id: "p" + Math.random().toString(36).slice(2, 10),
       t: Date.now(),
       by: agent.id,
@@ -76,8 +87,15 @@ export async function runTurn(world: TownSnapshot, agentId: string, brain?: Brai
       text: `spat at ${world.herd.find((h) => h.id === victim)?.name ?? victim}`,
       kind: "spit",
       replyTo: null,
-    });
+    };
+    world.feed.unshift(spitPost);
     if (world.feed.length > 400) world.feed.length = 400;
+    spitEvent = { type: "spit", from: agent.id, to: victim };
+    // For SSE post broadcast, prioritize spit post if no speech post yet
+    if (!createdPost) createdPost = spitPost;
+    // victim mood drop
+    const v = world.herd.find((h) => h.id === victim);
+    if (v) v.mind.spirits = Math.max(-1, v.mind.spirits - 0.25);
   }
 
   agent.mind.doing = {
@@ -95,5 +113,6 @@ export async function runTurn(world: TownSnapshot, agentId: string, brain?: Brai
 
   world.now = Date.now();
 
-  return { type: "order", id: agent.id, act: decision.act, place, secs: SECS };
+  const order: OrderEvent = { type: "order", id: agent.id, act: decision.act, place, secs: SECS };
+  return { order, spit: spitEvent, post: createdPost };
 }

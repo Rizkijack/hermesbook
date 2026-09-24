@@ -3,7 +3,7 @@ import cors from "cors";
 import type { TownSnapshot, Resident } from "@hermesbook/shared";
 import { Hc, rf, encodeGenes } from "@hermesbook/shared";
 import { saveAtomically, saveDebounced } from "./persist.js";
-import { createInitialWorld, makeResidentFromFork } from "./world.js";
+import { createInitialWorld, makeResidentFromFork, generateEdition, generateWeatherEvent } from "./world.js";
 import { loadWithRecovery } from "./persist.js";
 import { LOCATIONS, LOCATION_BY_ID } from "./locations.js";
 import { spend } from "./spend.js";
@@ -211,24 +211,48 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, now: Date.now() }));
 // Turn scheduler interval (18s per doc demo; prod faster for testing 4s)
 const TURN_MS = Number(process.env.TURN_MS ?? 1800);
 let turnTimer: ReturnType<typeof setInterval> | null = null;
+let turnCount = 0;
 function startScheduler(): void {
   if (turnTimer) clearInterval(turnTimer);
   turnTimer = setInterval(async () => {
     const id = scheduler.next();
     if (!id) return;
-    const ev = await runTurn(world, id, brain);
-    if (ev) {
-      broadcast(ev);
-      // occasionally broadcast post for feed
-      // if feed grew, broadcast latest post
-      if (world.feed.length > 0) {
-        const latest = world.feed[0]!;
-        // dedup: only broadcast if very recent
-        if (Date.now() - latest.t < 2500) broadcast({ type: "post", post: latest });
+    const result = await runTurn(world, id, brain);
+    if (!result || !result.order) return;
+    turnCount++;
+    broadcast(result.order);
+    if (result.spit) broadcast(result.spit);
+    if (result.post && Date.now() - result.post.t < 3000) {
+      broadcast({ type: "post", post: result.post });
+      // Also push bubble via post SSE will trigger frontend; order already moves agent
+    } else if (world.feed.length > 0) {
+      const latest = world.feed[0]!;
+      if (Date.now() - latest.t < 2500 && latest.id === result.post?.id) {
+        // already broadcast
+      } else if (Date.now() - latest.t < 2500) {
+        broadcast({ type: "post", post: latest });
       }
-      // debounced save for routine ticks
-      saveDebounced(DATA_PATH, world);
     }
+
+    // Weather events: 2% per turn (~one per ~50 turns), or ~30 per day
+    if (Math.random() < 0.02) {
+      const ev = generateWeatherEvent();
+      world.events.push(ev);
+      if (world.events.length > 120) world.events.shift();
+      broadcast({ type: "event", event: ev });
+    }
+
+    // Daily Spit edition: every 60 turns (~108s at 1.8s tick) ~ 8-9 editions per dayLength 900s if tick 1.8s: 500 turns per day, but we publish every 60 for demo
+    // Also publish when day wraps for realism
+    if (turnCount % 60 === 0) {
+      const edition = generateEdition(world);
+      world.editions.unshift(edition);
+      if (world.editions.length > 20) world.editions.length = 20;
+      broadcast({ type: "edition", edition });
+    }
+
+    // debounced save for routine ticks
+    saveDebounced(DATA_PATH, world);
   }, TURN_MS);
   // allow process to exit in tests
   if (turnTimer && typeof (turnTimer as NodeJS.Timeout).unref === "function") (turnTimer as NodeJS.Timeout).unref();

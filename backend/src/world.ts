@@ -143,3 +143,49 @@ export function makeResidentFromFork(parent: Resident, name: string, bio: string
     },
   };
 }
+
+const WEATHERS = [
+  "Rain over the east meadow.",
+  "Fog rolling down the valley.",
+  "Hot. The shed is unbearable.",
+  "Cold snap at dawn.",
+  "Wind carries gossip from the square.",
+  "Dust over the trough at noon.",
+  "Clear night, lamps lit early.",
+  "Muddy paths after the rain.",
+];
+
+const HEADLINE_VERBS = ["walked out of", "argued at", "napped through", "defended", "spat near", "sang at", "fixed", "ignored"];
+const LOCS = ["the fork booth", "the square", "the hall", "the tavern", "the pond", "the mill", "the pens"];
+
+export function generateWeatherEvent(): TownEvent {
+  return { t: Date.now(), kind: "weather", text: WEATHERS[Math.floor(Math.random() * WEATHERS.length)]! };
+}
+
+export function generateEdition(world: TownSnapshot): Edition {
+  const no = (world.editions[0]?.no ?? 0) + 1;
+  const rng = Math.random;
+  const a = world.herd[Math.floor(rng() * world.herd.length)];
+  const b = world.herd[Math.floor(rng() * world.herd.length)];
+  const verb = HEADLINE_VERBS[Math.floor(rng() * HEADLINE_VERBS.length)];
+  const loc = LOCS[Math.floor(rng() * LOCS.length)];
+  const headline = a && b ? `${a.name} ${verb} ${loc}. ${b.name} watched and said nothing` : `Day ${no}: ${world.herd.length} residents keep the town moving`;
+  const standfirst = `${world.herd.length} residents in the field. ${world.feed.length} things said, and ${world.events.length} town events entered into the book. ${world.projects[0] ? `${world.projects[0].name} at ${Math.round(world.projects[0].progress * 100)}%.` : ""}`;
+  const recentFeed = world.feed.slice(0, 3).map((p) => p.text).join(" ") || "Nothing moved all morning.";
+  const stories = [
+    { head: "About the town", text: recentFeed.slice(0, 180) || "First frost. Nobody moved all morning." },
+    { head: "Public works", text: world.projects[0] ? `${world.projects[0].name} — ${world.projects[0].purpose} — ${Math.round(world.projects[0].progress * 100)}%. Sponsors: ${world.projects[0].sponsors.length}.` : "The fence still stands where it was." },
+  ];
+  const weather = WEATHERS[Math.floor(rng() * WEATHERS.length)]!;
+  const quotePick = world.feed[Math.floor(rng() * Math.min(5, world.feed.length))] ?? { name: "Hux", text: "say that at the hall and see what happens" };
+  const q = world.herd.find((h) => h.name === quotePick.name) ?? a;
+  return {
+    no,
+    t: Date.now(),
+    headline,
+    standfirst,
+    stories,
+    weather,
+    quote: { who: q?.name ?? "Hux", text: quotePick.text ?? "the cart is late." },
+  };
+}
