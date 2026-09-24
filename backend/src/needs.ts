@@ -30,6 +30,13 @@ export function tickNeeds(needs: Resident["needs"], act: string, dtSec: number):
       next.hunger = Math.min(1, next.hunger + 0.015);
       next.tired = Math.min(1, next.tired + 0.02);
       break;
+    case "wander":
+    case "stroll":
+    case "explore":
+      next.lonely = Math.max(0, next.lonely - 0.06);
+      next.tired = Math.min(1, next.tired + 0.015);
+      next.hunger = Math.min(1, next.hunger + 0.008);
+      break;
     case "spit":
       next.lonely = Math.min(1, next.lonely + 0.05);
       break;

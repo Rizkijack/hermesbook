@@ -28,8 +28,8 @@ describe("SimBrain decide", () => {
     }
   });
 
-  it("lonely -> square/tavern/hall", () => {
-    const opts = new Set(["square", "tavern", "hall"]);
+  it("lonely -> social places", () => {
+    const opts = new Set(["square", "tavern", "hall", "baths", "fire", "market", "board"]);
     for (let i = 0; i < 20; i++) {
       const d = decide({ needs: { hunger: 0.1, thirst: 0.1, tired: 0.1, lonely: 0.8 }, clock: 0.2, location: "square", nearbyAgents: [], rng: () => Math.random() });
       expect(opts.has(d.place)).toBe(true);
