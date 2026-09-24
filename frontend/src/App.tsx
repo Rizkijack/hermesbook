@@ -12,6 +12,7 @@ import { LineageView } from "./views/LineageView.js";
 import { CoinView } from "./views/CoinView.js";
 import { DocsView } from "./views/DocsView.js";
 import { LlamaView } from "./views/LlamaView.js";
+import { QuestView } from "./views/QuestView.js";
 
 export default function App() {
   const [route] = useHashRoute();
@@ -71,6 +72,7 @@ export default function App() {
           <Link to="herd" className={page === "herd" ? "active" : ""}>Herd</Link>
           <Link to="feed" className={page === "feed" ? "active" : ""}>Feed</Link>
           <Link to="paper" className={page === "paper" ? "active" : ""}>Paper</Link>
+          <Link to="quest" className={page === "quest" ? "active" : ""}>Quest</Link>
           <Link to="fork" className={page === "fork" ? "active" : ""}>Fork</Link>
           <Link to="lineage" className={page === "lineage" ? "active" : ""}>Lineage</Link>
           <Link to="coin" className={page === "coin" ? "active" : ""}>Coin</Link>
@@ -90,13 +92,14 @@ export default function App() {
         {page === "herd" && <HerdView snapshot={state} />}
         {page === "feed" && <FeedView snapshot={state} />}
         {page === "paper" && <PaperView snapshot={state} />}
+        {page === "quest" && <QuestView snapshot={state} />}
         {page === "fork" && <ForkView snapshot={state} preset={arg} onForked={() => { /* state will refresh via SSE herd */ }} />}
         {page === "lineage" && <LineageView snapshot={state} />}
         {page === "coin" && <CoinView snapshot={state} />}
         {page === "docs" && <DocsView snapshot={state} />}
         {page === "llama" && arg && <LlamaView snapshot={state} id={arg} />}
         {page === "llama" && !arg && <div className="card">No llama id. <Link to="herd">Go to herd</Link></div>}
-        {!["town", "herd", "feed", "paper", "fork", "lineage", "coin", "docs", "llama"].includes(page) && (
+        {!["town", "herd", "feed", "paper", "quest", "fork", "lineage", "coin", "docs", "llama"].includes(page) && (
           <div className="card">Unknown page "{page}". <Link to="town">Go to town</Link></div>
         )}
       </main>

@@ -74,6 +74,31 @@ export interface Faction {
   influence: number;
 }
 
+export type QuestType = "visit" | "talk" | "fetch" | "work" | "explore" | "social";
+export type QuestStatus = "available" | "active" | "completed" | "claimed";
+export type QuestDifficulty = "easy" | "medium" | "hard";
+
+export interface Quest {
+  id: string;
+  title: string;
+  description: string;
+  giver: string; // resident id or "board"
+  giverName: string;
+  type: QuestType;
+  category: string; // Daily, Work, Social, Exploration
+  targetPlace?: string;
+  targetPlaces?: string[];
+  targetAgent?: string;
+  progress: number;
+  required: number;
+  reward: { spirits?: number; text: string; progressBonus?: number };
+  status: QuestStatus;
+  difficulty: QuestDifficulty;
+  createdAt: number;
+  expiresAt: number | null;
+  completedAt?: number;
+}
+
 export interface TownSnapshot {
   now: number;
   config: TownConfig;
@@ -83,6 +108,7 @@ export interface TownSnapshot {
   editions: Edition[];
   projects: Project[];
   factions: Faction[];
+  quests: Quest[];
 }
 
 export interface TownConfig {

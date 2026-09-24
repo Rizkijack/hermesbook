@@ -1,11 +1,15 @@
-import type { TownSnapshot } from "@hermesbook/shared";
+import type { TownSnapshot, Quest } from "@hermesbook/shared";
 import { WorldCanvas } from "../canvas/WorldCanvas.js";
+import { Link } from "../router/hash.js";
 
 export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?: (id: string) => void }) {
   const counts = new Map<string, number>();
   for (const h of snapshot.herd) counts.set(h.mind.doing.place, (counts.get(h.mind.doing.place) ?? 0) + 1);
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
   const day = (Math.floor((Date.now() / 1000 / 900) % 365)) + 1;
+  const quests = ((snapshot as any).quests as Quest[] | undefined) ?? [];
+  const activeQuests = quests.filter((q) => q.status === "active" || q.status === "available").slice(0, 3);
+  const readyQuests = quests.filter((q) => q.status === "completed");
 
   return (
     <div className="stagger">
@@ -84,6 +88,41 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
           </div>
         </div>
       </div>
+
+      {/* quest strip — halaman quest preview */}
+      {(activeQuests.length > 0 || readyQuests.length > 0) && (
+        <div className="card" style={{ marginTop: 16, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--hair)", background: "color-mix(in srgb, var(--mark) 35%, var(--paper-2) 65%)" }}>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--faint)" }}>
+              Papan Quest · {activeQuests.length} aktif {readyQuests.length > 0 ? `· ${readyQuests.length} siap klaim` : ""}
+            </div>
+            <Link to="quest" className="mono" style={{ fontSize: 11, color: "var(--ink)", textDecoration: "none", borderBottom: "1px solid var(--ink)", paddingBottom: 1 }}>
+              Buka Papan →
+            </Link>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, Math.max(activeQuests.length, 1))}, 1fr)`, gap: 0 }}>
+            {activeQuests.map((q) => {
+              const pct = Math.round((q.progress / q.required) * 100);
+              return (
+                <div key={q.id} style={{ padding: "12px 14px", borderRight: "1px solid var(--hair)", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontFamily: "Instrument Serif", fontSize: 13, lineHeight: 1.1 }}>{q.title}</div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>{q.category} · {q.type} · {q.progress}/{q.required}</div>
+                  <div style={{ height: 4, background: "color-mix(in srgb, var(--hair) 60%, transparent)", borderRadius: 6, overflow: "hidden", marginTop: 2 }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: "var(--ink)", transition: "width 0.4s ease" }} />
+                  </div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{pct}% · {q.giverName}</div>
+                </div>
+              );
+            })}
+            {activeQuests.length === 0 && readyQuests.length > 0 && (
+              <div style={{ padding: "12px 14px" }}>
+                <div className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>{readyQuests[0]!.title} siap diklaim!</div>
+                <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{readyQuests[0]!.reward.text}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <style>{`@media (max-width: 900px){ div[style*="grid-template-columns: 1.6fr"]{ grid-template-columns: 1fr !important; } }`}</style>
     </div>

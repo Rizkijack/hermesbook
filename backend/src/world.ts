@@ -1,8 +1,9 @@
-import type { TownSnapshot, Resident, Post, TownEvent, Edition, Project, Faction } from "@hermesbook/shared";
+import type { TownSnapshot, Resident, Post, TownEvent, Edition, Project, Faction, Quest } from "@hermesbook/shared";
 import { defaultConfig } from "@hermesbook/shared";
 import { Hc } from "@hermesbook/shared";
 import { seededRandom } from "@hermesbook/shared";
 import { LOCATIONS } from "./locations.js";
+import { createInitialQuests } from "./quests.js";
 
 const JOBS = ["shearer", "miller", "librarian", "clerk", "baker", "herder", "scribe", "smith"] as const;
 const OBSESSIONS = [
@@ -108,6 +109,8 @@ export function createInitialWorld(): TownSnapshot {
     { id: "faction" + Math.random().toString(36).slice(2, 6), name: "the board people", cause: "every problem deserves a notice", members: [herd[0]!.id, herd[1]!.id], influence: 0.35 },
   ];
 
+  const quests = createInitialQuests({ herd, feed, events, editions, projects, factions, now: Date.now(), config: { ...defaultConfig } } as TownSnapshot);
+
   return {
     now: Date.now(),
     config: { ...defaultConfig },
@@ -117,6 +120,7 @@ export function createInitialWorld(): TownSnapshot {
     editions,
     projects,
     factions,
+    quests,
   };
 }
 

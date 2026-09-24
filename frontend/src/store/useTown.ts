@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { TownSnapshot, Resident, Post } from "@hermesbook/shared";
+import type { TownSnapshot, Resident, Post, Quest } from "@hermesbook/shared";
 
 export function useTown() {
   const [state, setState] = useState<TownSnapshot | null>(null);
@@ -50,6 +50,14 @@ export function useTown() {
           case "event": {
             const event = (ev as { event: TownSnapshot["events"][number] }).event;
             return { ...prev, events: [...prev.events, event].slice(-120) } as TownSnapshot;
+          }
+          case "quest": {
+            const quest = (ev as { quest: Quest }).quest;
+            const exists = prev.quests?.some((q) => q.id === quest.id);
+            if (exists) {
+              return { ...prev, quests: prev.quests.map((q) => (q.id === quest.id ? quest : q)) } as TownSnapshot;
+            }
+            return { ...prev, quests: [...(prev.quests ?? []), quest].slice(-12) } as TownSnapshot;
           }
           case "spit":
           case "config":

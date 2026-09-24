@@ -6,6 +6,7 @@ import { Hc, rf, encodeGenes } from "@hermesbook/shared";
 import { saveAtomically, saveDebounced } from "./persist.js";
 import { createInitialWorld, makeResidentFromFork, generateEdition, generateWeatherEvent } from "./world.js";
 import { loadWithRecovery } from "./persist.js";
+import { updateQuestProgress, claimQuest, refreshExpiredQuests, generateQuest, createInitialQuests } from "./quests.js";
 import { LOCATIONS, LOCATION_BY_ID } from "./locations.js";
 import { spend } from "./spend.js";
 import { createBrain } from "./brain.js";
@@ -41,6 +42,11 @@ try {
   else world = createInitialWorld();
 } catch {
   world = createInitialWorld();
+}
+
+if (!Array.isArray((world as any).quests)) (world as any).quests = [];
+if (world.quests.length === 0) {
+  world.quests = createInitialQuests(world);
 }
 
 const brain = createBrain();
@@ -208,6 +214,39 @@ app.get("/api/status", (_req, res) => {
   });
 });
 
+// Quests
+app.get("/api/quests", (_req, res) => {
+  // refresh expired before returning
+  refreshExpiredQuests(world);
+  res.json(world.quests);
+});
+
+app.post("/api/quests/:id/claim", async (req, res) => {
+  const id = req.params.id;
+  const result = claimQuest(world, id);
+  if (!result.ok) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  broadcast({ type: "quest", quest: result.quest });
+  broadcast({ type: "herd", herd: world.herd });
+  // persist
+  try { await saveAtomically(DATA_PATH, world); } catch {}
+  res.json(result.quest);
+});
+
+app.post("/api/quests/refresh", (_req, res) => {
+  const before = world.quests.length;
+  refreshExpiredQuests(world);
+  // also generate one fresh if under 6
+  if (world.quests.length < 6) {
+    const nq = generateQuest(world);
+    world.quests.push(nq);
+    broadcast({ type: "quest", quest: nq });
+  }
+  res.json({ before, after: world.quests.length, quests: world.quests });
+});
+
 // health
 app.get("/api/health", (_req, res) => res.json({ ok: true, now: Date.now() }));
 
@@ -243,6 +282,25 @@ function startScheduler(): void {
       world.events.push(ev);
       if (world.events.length > 120) world.events.shift();
       broadcast({ type: "event", event: ev });
+    }
+
+    // Quest progress — every move counts for town
+    const updatedQuests = updateQuestProgress(world, { act: result.order.act, place: result.order.place, agentId: result.order.id, postKind: result.post?.kind });
+    for (const q of updatedQuests) {
+      broadcast({ type: "quest", quest: q });
+      // also push quest complete as town event
+      const ev = { t: Date.now(), kind: "quest", text: `Quest completed: ${q.title}` };
+      world.events.push(ev);
+      if (world.events.length > 120) world.events.shift();
+      broadcast({ type: "event", event: ev });
+    }
+    // periodic quest housekeeping
+    if (turnCount % 30 === 0) {
+      const beforeLen = world.quests.length;
+      refreshExpiredQuests(world);
+      if (world.quests.length !== beforeLen) {
+        for (const q of world.quests) broadcast({ type: "quest", quest: q });
+      }
     }
 
     // Daily Spit edition: every 60 turns (~108s at 1.8s tick) ~ 8-9 editions per dayLength 900s if tick 1.8s: 500 turns per day, but we publish every 60 for demo
