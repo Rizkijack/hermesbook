@@ -17,6 +17,8 @@ import { fileURLToPath } from "url";
 
 function resolveDataPath(): string {
   if (process.env.DATA_PATH) return process.env.DATA_PATH;
+  // Vercel serverless: only /tmp is writable per instance
+  if (process.env.VERCEL) return "/tmp/town.json";
   // Try cwd/data/town.json (when running from project root)
   if (existsSync("data/town.json") || existsSync(path.join(process.cwd(), "data/town.json"))) {
     return path.join(process.cwd(), "data/town.json");

@@ -10,3 +10,4 @@ frontend/dist
 backend/dist
 shared/dist
 .DS_Store
+.vercel
