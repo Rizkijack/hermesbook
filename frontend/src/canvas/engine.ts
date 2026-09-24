@@ -413,31 +413,197 @@ export class Xf {
     for (const b of LOCATIONS) {
       const bx = b.x * V, by = b.y * V, bw = b.w * V, bh = b.h * V;
       if (bx + bw < viewLeft || bx > viewRight || by + bh < viewTop || by > viewBottom) continue;
+      // skip pure field/water from building queue — they get terrain treatment below
+      if (b.category === "Food" || b.category === "Water") {
+        queue.push({
+          y: by + bh,
+          draw: () => {
+            const isPond = b.id === "pond";
+            const isMeadow = b.id === "meadowW" || b.id === "meadowE";
+            const isOrchard = b.id === "orchard";
+            const isTrough = b.id === "trough";
+            // base field
+            ctx.save();
+            if (isPond) {
+              ctx.fillStyle = isDarkTheme ? "rgba(74,122,150,0.55)" : "rgba(118,184,216,0.55)";
+              ctx.beginPath();
+              // organic pond shape
+              ctx.ellipse(bx + bw / 2, by + bh / 2, bw / 2 - 4, bh / 2 - 6, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = isDarkTheme ? "rgba(90,140,170,0.9)" : "rgba(90,160,190,0.9)";
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+              // highlight ripple
+              ctx.fillStyle = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.35)";
+              ctx.beginPath();
+              ctx.ellipse(bx + bw / 2 - 8, by + bh / 2 - 4, 18, 8, -0.2, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (isOrchard) {
+              ctx.fillStyle = isDarkTheme ? "rgba(45,62,38,0.45)" : "rgba(190,220,170,0.35)";
+              ctx.fillRect(bx, by, bw, bh);
+              ctx.strokeStyle = isDarkTheme ? "#2e3d2a" : "#8fb88a";
+              ctx.setLineDash([4, 3]);
+              ctx.strokeRect(bx, by, bw, bh);
+              ctx.setLineDash([]);
+              // trees as dots
+              ctx.fillStyle = isDarkTheme ? "#3d5a32" : "#5a8a4a";
+              for (let tx = 0; tx < 3; tx++) for (let ty = 0; ty < 2; ty++) {
+                const x = bx + 14 + tx * 28 + (ty % 2 ? 14 : 0);
+                const y = by + 14 + ty * 26;
+                ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = isDarkTheme ? "#6b7a3a" : "#8ab66a";
+                ctx.beginPath(); ctx.arc(x, y - 3, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = isDarkTheme ? "#3d5a32" : "#5a8a4a";
+              }
+            } else if (isTrough) {
+              ctx.fillStyle = isDarkTheme ? "#3d2f1e" : "#8b6a3a";
+              ctx.fillRect(bx, by + bh - 10, bw, 10);
+              ctx.fillStyle = isDarkTheme ? "#5a4328" : "#c9a86a";
+              ctx.fillRect(bx + 2, by + bh - 12, bw - 4, 3);
+              ctx.fillStyle = isDarkTheme ? "#d8c9a8" : "#f4f1ea";
+              ctx.fillRect(bx + 4, by + bh - 10, bw - 8, 2);
+            } else if (isMeadow) {
+              // meadow field with subtle furrows
+              ctx.fillStyle = isMeadow && b.id === "meadowW" ? (isDarkTheme ? "rgba(46,74,42,0.5)" : "rgba(180,220,160,0.45)") : (isDarkTheme ? "rgba(62,58,32,0.45)" : "rgba(210,200,140,0.4)");
+              ctx.fillRect(bx, by, bw, bh);
+              ctx.strokeStyle = isDarkTheme ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)";
+              ctx.lineWidth = 0.6;
+              for (let fx = bx + 6; fx < bx + bw; fx += 12) {
+                ctx.beginPath(); ctx.moveTo(fx, by + 4); ctx.lineTo(fx - 4, by + bh - 4); ctx.stroke();
+              }
+              ctx.setLineDash([6, 4]); ctx.strokeStyle = isDarkTheme ? "rgba(201,168,106,0.35)" : "rgba(201,168,106,0.45)"; ctx.strokeRect(bx, by, bw, bh); ctx.setLineDash([]);
+            } else {
+              ctx.fillStyle = isDarkTheme ? "rgba(40,55,40,0.35)" : "rgba(200,230,190,0.25)";
+              ctx.fillRect(bx, by, bw, bh);
+              ctx.strokeStyle = isDarkTheme ? "#2e3d2a" : "#a8c9a0";
+              ctx.strokeRect(bx, by, bw, bh);
+            }
+            ctx.restore();
+            // label
+            ctx.fillStyle = isDarkTheme ? "#a49c90" : "#1b1915";
+            ctx.font = "7px JetBrains Mono";
+            ctx.textAlign = "center";
+            ctx.globalAlpha = 0.85;
+            ctx.fillText(b.name.replace("The ", ""), bx + bw / 2, by + bh + 10);
+            ctx.globalAlpha = 1;
+          },
+        });
+        continue;
+      }
       queue.push({
         y: by + bh,
         draw: () => {
-          ctx.fillStyle = "rgba(0,0,0,0.08)";
-          ctx.fillRect(bx + 6, by + 6, bw, bh);
-          const isDark = this.nightIntensity() > 0.5;
-          if (isDarkTheme) {
-            ctx.fillStyle = isDark ? "#3a302a" : "#2a2622";
-          } else {
-            ctx.fillStyle = isDark ? "#5a4a3a" : "#e8ddd0";
+          ctx.save();
+          // shadow
+          ctx.fillStyle = "rgba(0,0,0,0.10)";
+          ctx.fillRect(bx + 5, by + 5, bw, bh);
+          const isDark = isDarkTheme || this.nightIntensity() > 0.5;
+          // per-category palette
+          let wall = isDarkTheme ? "#2a2622" : "#e8ddd0";
+          let roof = isDarkTheme ? "#6b4a35" : "#8b5a3c";
+          let trim = isDarkTheme ? "#3a3530" : "#1b1915";
+          let wood = isDarkTheme ? "#3d2f1e" : "#c9a86a";
+          if (b.category === "Social") {
+            // tavern/baths/square/fire/dock — warm wood + open porch
+            wall = isDarkTheme ? "#2e2418" : "#efe6d5";
+            roof = isDarkTheme ? "#7a4a2e" : "#a66a3a";
+            trim = isDarkTheme ? "#4a3a28" : "#5a3a1e";
+          } else if (b.category === "Civic") {
+            // hall/vault/station/board/booth — stone formal, columns
+            wall = isDarkTheme ? "#2c2e30" : "#e6e2dd";
+            roof = isDarkTheme ? "#4a4a4e" : "#6b6a6e";
+            trim = isDarkTheme ? "#3a3a3e" : "#2b2a2e";
+          } else if (b.category === "Work") {
+            // market/press/bank/library/clinic/school/post/shed/mill — brick/industrial
+            wall = isDarkTheme ? "#2f2520" : "#e8d5c0";
+            roof = isDarkTheme ? "#5a3a28" : "#9a6a3a";
+            trim = isDarkTheme ? "#4a3a2e" : "#3d2a18";
+          } else if (b.category === "Rest") {
+            // barn/pens — barn red + gambrel
+            wall = isDarkTheme ? "#3a1e1a" : "#b54a3a";
+            roof = isDarkTheme ? "#4a2a24" : "#7a2e22";
+            trim = isDarkTheme ? "#5a3028" : "#4a1e14";
+            wood = isDarkTheme ? "#4a3a2a" : "#d8c9a8";
           }
+          if (isDark && !isDarkTheme) wall = isDarkTheme ? wall : "#5a4a3a";
+          // wall
+          ctx.fillStyle = wall;
           ctx.fillRect(bx, by, bw, bh);
-          ctx.strokeStyle = isDarkTheme ? "#3a3530" : "#1b1915";
+          ctx.strokeStyle = trim;
           ctx.lineWidth = 1;
           ctx.strokeRect(bx, by, bw, bh);
-          ctx.fillStyle = isDarkTheme ? "#6b4a35" : "#8b5a3c";
-          ctx.fillRect(bx - 2, by - 6, bw + 4, 6);
-          ctx.fillStyle = isDarkTheme ? "#e8e3d7" : "#1b1915";
-          ctx.font = "8px JetBrains Mono";
-          ctx.textAlign = "center";
-          ctx.fillText(b.name, bx + bw / 2, by + bh + 10);
-          if (this.nightIntensity() > 0.2) {
-            ctx.fillStyle = `rgba(255, 220, 120, ${0.55 * this.nightIntensity()})`;
-            ctx.fillRect(bx + bw / 2 - 6, by + bh / 2 - 4, 12, 8);
+          // roof — per category silhouette
+          ctx.fillStyle = roof;
+          if (b.category === "Rest" && b.id === "barn") {
+            // gambrel
+            ctx.beginPath(); ctx.moveTo(bx - 3, by); ctx.lineTo(bx + bw / 2, by - 10); ctx.lineTo(bx + bw + 3, by); ctx.lineTo(bx + bw, by + 2); ctx.lineTo(bx, by + 2); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = trim; ctx.stroke();
+          } else if (b.category === "Civic" && b.id === "hall") {
+            // pediment
+            ctx.beginPath(); ctx.moveTo(bx - 2, by); ctx.lineTo(bx + bw / 2, by - 12); ctx.lineTo(bx + bw + 2, by); ctx.closePath(); ctx.fill();
+            // columns
+            ctx.fillStyle = isDarkTheme ? "#d8d2c6" : "#f4f1ea";
+            for (let cx = 0; cx < 3; cx++) ctx.fillRect(bx + 6 + cx * (bw - 12) / 2, by + 4, 3, bh - 8);
+          } else if (b.id === "vault") {
+            ctx.fillRect(bx - 2, by - 4, bw + 4, 4); // flat stone
+            ctx.fillStyle = isDarkTheme ? "#c9a86a" : "#1b1915"; ctx.fillRect(bx + bw / 2 - 4, by + bh / 2 - 6, 8, 10); // door
+          } else if (b.id === "station") {
+            ctx.fillRect(bx - 3, by - 5, bw + 6, 5); // canopy
+            ctx.fillStyle = trim; ctx.fillRect(bx, by + bh - 3, bw, 3);
+          } else {
+            // default gable
+            ctx.fillRect(bx - 2, by - 6, bw + 4, 6);
+            // trim line
+            ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fillRect(bx - 2, by, bw + 4, 1);
           }
+          // details per sub-type
+          if (b.id === "market") {
+            // awning stripes
+            ctx.fillStyle = isDarkTheme ? "#c9a86a" : "#e8e3d7";
+            for (let ax = 0; ax < bw; ax += 8) ctx.fillRect(bx + ax, by + bh - 6, 4, 6);
+            ctx.fillStyle = isDarkTheme ? "#7a4a2e" : "#a66a3a"; ctx.fillRect(bx, by + bh - 6, bw, 1);
+          } else if (b.id === "tavern") {
+            ctx.fillStyle = "rgba(255,220,120,0.45)"; ctx.fillRect(bx + 4, by + 6, bw - 8, 8); // warm window
+            ctx.fillStyle = wood; ctx.fillRect(bx + bw / 2 - 6, by + 10, 12, bh - 14); // door
+          } else if (b.id === "library") {
+            ctx.fillStyle = isDarkTheme ? "#2e2a25" : "#1b1915"; for (let wx = 0; wx < 2; wx++) ctx.fillRect(bx + 6 + wx * (bw - 14), by + 6, 5, 8);
+          } else if (b.id === "mill") {
+            // wheel
+            ctx.strokeStyle = isDarkTheme ? "#4a3a2e" : "#5a3a1e"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(bx + bw + 6, by + bh / 2, 10, 0, Math.PI * 2); ctx.stroke();
+            for (let a = 0; a < 4; a++) { const ang = (a * Math.PI / 2); ctx.beginPath(); ctx.moveTo(bx + bw + 6, by + bh / 2); ctx.lineTo(bx + bw + 6 + Math.cos(ang) * 10, by + bh / 2 + Math.sin(ang) * 10); ctx.stroke(); }
+          } else if (b.id === "shed") {
+            ctx.fillStyle = wood; for (let fx = bx + 4; fx < bx + bw - 4; fx += 6) ctx.fillRect(fx, by + 4, 2, bh - 8);
+          }
+          // windows — night glow
+          if (this.nightIntensity() > 0.18) {
+            const glow = `rgba(255, 220, 120, ${0.52 * this.nightIntensity()})`;
+            ctx.fillStyle = glow;
+            // two windows
+            ctx.fillRect(bx + 5, by + 6, 7, 7);
+            ctx.fillRect(bx + bw - 12, by + 6, 7, 7);
+            // window cross
+            ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = 0.6;
+            ctx.strokeRect(bx + 5, by + 6, 7, 7); ctx.strokeRect(bx + bw - 12, by + 6, 7, 7);
+          } else if (!isDarkTheme) {
+            ctx.fillStyle = "#2e2a25"; ctx.fillRect(bx + 6, by + 7, 6, 6); ctx.fillRect(bx + bw - 12, by + 7, 6, 6);
+          }
+          // door
+          ctx.fillStyle = isDarkTheme ? "#1e1a18" : "#2b2118";
+          ctx.fillRect(bx + bw / 2 - 5, by + bh - 10, 10, 10);
+          ctx.fillStyle = "rgba(201,168,106,0.9)"; ctx.fillRect(bx + bw / 2 + 2, by + bh - 6, 1.2, 1.2);
+          // label
+          ctx.fillStyle = isDarkTheme ? "#a49c90" : "#1b1915";
+          ctx.font = "7px JetBrains Mono";
+          ctx.textAlign = "center";
+          ctx.globalAlpha = 0.9;
+          // strip behind label
+          ctx.fillStyle = isDarkTheme ? "rgba(28,26,24,0.92)" : "rgba(244,241,234,0.92)";
+          const lblW = b.name.length * 4.2 + 8;
+          ctx.fillRect(bx + bw / 2 - lblW / 2, by + bh + 2, lblW, 9);
+          ctx.fillStyle = isDarkTheme ? "#d8d2c6" : "#1b1915";
+          ctx.fillText(b.name.replace("The ", ""), bx + bw / 2, by + bh + 9);
+          ctx.globalAlpha = 1;
+          ctx.restore();
         },
       });
     }
