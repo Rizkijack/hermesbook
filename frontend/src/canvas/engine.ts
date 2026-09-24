@@ -21,6 +21,14 @@ export interface AgentSprite {
   place: string;
   mood: number;
   born: number;
+  // movement realism
+  vx: number;
+  vy: number;
+  baseSpeed: number;
+  wanderTimer: number;
+  walkPhase: number;
+  idlePhase: number;
+  targetPlace: string;
 }
 
 interface Puff {
@@ -36,6 +44,12 @@ interface SpeechBubble {
   text: string;
   until: number;
   by: string;
+}
+
+function hashId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
 }
 
 export class Xf {
@@ -57,6 +71,7 @@ export class Xf {
         const loc = LOCATIONS.find((l) => l.id === h.mind.doing.place) ?? LOCATIONS[0]!;
         const sx = loc.spot[0] * V + (Math.random() * 24 - 12);
         const sy = loc.spot[1] * V + (Math.random() * 24 - 12);
+        const hid = hashId(h.id);
         this.byId.set(h.id, {
           id: h.id,
           name: h.name,
@@ -72,6 +87,13 @@ export class Xf {
           place: h.mind.doing.place,
           mood: 0,
           born: h.born,
+          vx: 0,
+          vy: 0,
+          baseSpeed: 0.88 + (hid % 100) / 250, // 0.88 - 1.28
+          wanderTimer: 1.0 + Math.random() * 2.5,
+          walkPhase: Math.random(),
+          idlePhase: Math.random() * Math.PI * 2,
+          targetPlace: h.mind.doing.place,
         });
       }
     }
@@ -88,32 +110,163 @@ export class Xf {
     this.cam.y += (this.cam.ty - this.cam.y) * 0.08;
     this.cam.zoom += (this.cam.tz - this.cam.zoom) * 0.08;
 
-    // move agents along path
+    const actSpeed: Record<string, number> = {
+      sleep: 0,
+      spit: 0,
+      shake: 0,
+      graze: 26,
+      drink: 28,
+      wander: 34,
+      stroll: 30,
+      explore: 44,
+      work: 36,
+      talk: 30,
+      argue: 34,
+    };
+
+    // move agents along path + autonomous idle wander
     for (const a of this.byId.values()) {
+      const isSleeping = a.doing === "sleep";
+      const targetSpeedBase = (actSpeed[a.doing] ?? 32) * a.baseSpeed;
+
       if (a.path.length > 0) {
         const next = a.path[0]!;
-        const tx = next.x * V + V / 2;
-        const ty = next.y * V + V / 2;
+        // add organic wobble to target tile center
+        const wobbleX = Math.sin(this.t * 0.9 + hashId(a.id) * 0.01) * 1.8;
+        const wobbleY = Math.cos(this.t * 1.1 + hashId(a.id) * 0.013) * 1.2;
+        const tx = next.x * V + V / 2 + wobbleX;
+        const ty = next.y * V + V / 2 + wobbleY;
         const dx = tx - a.x;
         const dy = ty - a.y;
         const dist = Math.hypot(dx, dy);
-        const speed = 38 * dt; // px per sec
-        if (dist < speed) {
+        // arrival slowdown
+        const slowFactor = dist < 18 ? dist / 18 : 1;
+        const jitter = 0.88 + Math.random() * 0.24; // per-frame speed variation
+        const speed = targetSpeedBase * slowFactor * jitter * dt;
+
+        if (dist < Math.max(2, speed)) {
           a.x = tx;
           a.y = ty;
           a.path.shift();
+          // occasional dust puff when stepping
+          if (Math.random() < 0.18 && targetSpeedBase > 20) {
+            this.puffs.push({ x: a.x, y: a.y + 8, vx: (Math.random() - 0.5) * 18, vy: -8 - Math.random() * 12, life: 0.42, kind: "dust" });
+          }
         } else {
-          a.x += (dx / dist) * speed;
-          a.y += (dy / dist) * speed;
-          a.facing = dx > 0 ? 1 : -1;
+          // acceleration smoothing
+          const targetVx = (dx / dist) * targetSpeedBase;
+          const targetVy = (dy / dist) * targetSpeedBase;
+          a.vx += (targetVx - a.vx) * 0.22;
+          a.vy += (targetVy - a.vy) * 0.22;
+          // add slight perpendicular sway for organic
+          const sway = Math.sin(this.t * 2.4 + hashId(a.id) * 0.02) * 0.45;
+          const perpX = - (dy / dist) * sway;
+          const perpY = (dx / dist) * sway;
+          a.x += (a.vx * dt * 0.06 + perpX * dt);
+          a.y += (a.vy * dt * 0.06 + perpY * dt);
+          // smooth facing, hysteresis 4px
+          if (Math.abs(dx) > 3) a.facing = dx > 0 ? 1 : -1;
+          // walk phase advances by distance
+          const step = Math.hypot(a.vx, a.vy) * dt * 0.04;
+          a.walkPhase = (a.walkPhase + step) % 1;
+          // slight idle phase for breathing while moving
+          a.idlePhase += dt * 0.6;
         }
-        a.doing = "work";
+      } else {
+        // no path — autonomous idle wander if not sleeping
+        if (!isSleeping) {
+          a.wanderTimer -= dt;
+          // separation: push away from nearby agents if too close
+          for (const other of this.byId.values()) {
+            if (other.id === a.id) continue;
+            const dx = a.x - other.x;
+            const dy = a.y - other.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < 22 * 22 && d2 > 0.1) {
+              const push = 18 * dt / Math.max(1, Math.sqrt(d2));
+              a.x += dx * push * 0.08;
+              a.y += dy * push * 0.08;
+              a.vx += dx * push * 0.02;
+            }
+          }
+
+          if (a.wanderTimer <= 0) {
+            // pick new idle target
+            const r = Math.random();
+            let nx: number, ny: number;
+            if (r < 0.32) {
+              // wander to random nearby spot (radius 50-110)
+              const ang = Math.random() * Math.PI * 2;
+              const rad = 48 + Math.random() * 62;
+              nx = Math.floor((a.x + Math.cos(ang) * rad) / V);
+              ny = Math.floor((a.y + Math.sin(ang) * rad) / V);
+            } else if (r < 0.62) {
+              // wander to a random social/civic location spot with jitter
+              const loc = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]!;
+              nx = loc.spot[0] + Math.floor((Math.random() - 0.5) * 3);
+              ny = loc.spot[1] + Math.floor((Math.random() - 0.5) * 3);
+              a.targetPlace = loc.id;
+              // 40% keep doing as stroll, else wander
+              if (Math.random() < 0.4) a.doing = Math.random() < 0.5 ? "stroll" : "wander";
+            } else {
+              // small jitter in place
+              nx = Math.floor(a.x / V + (Math.random() - 0.5) * 2);
+              ny = Math.floor(a.y / V + (Math.random() - 0.5) * 2);
+            }
+            nx = Math.max(2, Math.min(207, nx));
+            ny = Math.max(2, Math.min(125, ny));
+            const sx = Math.floor(a.x / V);
+            const sy = Math.floor(a.y / V);
+            if (nx !== sx || ny !== sy) {
+              const mapLike = {
+                at(_x: number, _y: number) { return 0; },
+                solid(x: number, y: number) { return x < 0 || y < 0 || x >= 210 || y >= 128; },
+              };
+              const path = pf(mapLike, sx, sy, nx, ny);
+              // smooth: drop every other point for less grid-locked (decimate)
+              const smooth = path.filter((_, i) => i % 2 === 0 || i === path.length - 1);
+              if (smooth.length > 0) {
+                a.path = smooth;
+                a.wanderTimer = 1.4 + Math.random() * 2.6;
+                // don't reset doing if it's sleep
+                if (!["sleep", "spit", "shake"].includes(a.doing)) {
+                  if (Math.random() < 0.55) a.doing = Math.random() < 0.6 ? "wander" : "stroll";
+                }
+                // give a little initial velocity wobble
+                a.vx += (Math.random() - 0.5) * 6;
+                a.vy += (Math.random() - 0.5) * 6;
+              } else {
+                a.wanderTimer = 0.6 + Math.random();
+              }
+            } else {
+              a.wanderTimer = 0.8 + Math.random();
+            }
+          } else {
+            // idle micro-movement: breathing sway + occasional step-in-place
+            a.idlePhase += dt * (0.7 + a.baseSpeed * 0.3);
+            const breathX = Math.sin(a.idlePhase * 0.9) * 0.35;
+            const breathY = Math.cos(a.idlePhase * 0.7) * 0.22;
+            a.x += breathX * dt * 0.5;
+            a.y += breathY * dt * 0.5;
+            // walkPhase still ticks slowly when idle (fidget)
+            a.walkPhase = (a.walkPhase + dt * 0.08) % 1;
+            if (Math.random() < 0.006) {
+              // tiny fidget step
+              a.x += (Math.random() - 0.5) * 4;
+              a.y += (Math.random() - 0.5) * 3;
+              a.walkPhase += 0.08;
+            }
+          }
+        } else {
+          // sleeping: just breathing
+          a.idlePhase += dt * 0.5;
+          a.x += Math.sin(a.idlePhase) * 0.04;
+        }
       }
-      // random idle drift tiny
-      if (a.path.length === 0 && Math.random() < 0.004) {
-        a.x += (Math.random() - 0.5) * 6;
-        a.y += (Math.random() - 0.5) * 6;
-      }
+
+      // clamp to world
+      a.x = Math.max(12, Math.min(this.worldW - 12, a.x));
+      a.y = Math.max(12, Math.min(this.worldH - 12, a.y));
     }
 
     // puffs life
@@ -143,22 +296,41 @@ export class Xf {
   order(id: string, act: string, place: string, _secs: number): void {
     const a = this.byId.get(id);
     if (!a) return;
+    // don't override shake/spit mid-animation
+    if (a.doing === "shake" || a.doing === "spit") {
+      // queue will be handled after animation ends; store targetPlace for later
+      a.targetPlace = place;
+      return;
+    }
     a.doing = act;
     a.place = place;
+    a.targetPlace = place;
+    a.wanderTimer = 1.2 + Math.random() * 1.4; // reset wander so server order has priority
     const loc = LOCATIONS.find((l) => l.id === place);
     if (loc) {
-      const tx = loc.spot[0];
-      const ty = loc.spot[1];
-      // pf expects tile coords
+      // add jitter to spot so not all agents stack exactly
+      const jitterX = (hashId(a.id) % 7 - 3) * 2 + (Math.random() - 0.5) * 6;
+      const jitterY = (hashId(a.id) % 5 - 2) * 2 + (Math.random() - 0.5) * 6;
+      const tx = loc.spot[0] + Math.floor(jitterX / V);
+      const ty = loc.spot[1] + Math.floor(jitterY / V);
       const sx = Math.floor(a.x / V);
       const sy = Math.floor(a.y / V);
-      // simple map for pf: provide at/solid
       const mapLike = {
         at(_x: number, _y: number) { return 0; },
         solid(x: number, y: number) { return x < 0 || y < 0 || x >= 210 || y >= 128; },
       };
       const path = pf(mapLike, sx, sy, tx, ty);
-      a.path = path;
+      // smooth path: keep first, decimate middle, keep last
+      const smooth = path.length > 6 ? path.filter((_, i) => i % 2 === 0 || i === path.length - 1) : path;
+      a.path = smooth;
+      // give initial push for snappier start
+      if (smooth.length > 0) {
+        const dx = smooth[0].x * V - a.x;
+        const dy = smooth[0].y * V - a.y;
+        const d = Math.hypot(dx, dy) || 1;
+        a.vx = (dx / d) * 12;
+        a.vy = (dy / d) * 12;
+      }
     }
   }
 
@@ -168,22 +340,28 @@ export class Xf {
     if (!attacker || !victim) return;
     attacker.facing = victim.x > attacker.x ? 1 : -1;
     attacker.doing = "spit";
+    attacker.path = [];
+    attacker.vx = attacker.facing * 8;
     setTimeout(() => {
       this.puffs.push({ x: attacker.x + attacker.facing * 22, y: attacker.y - 26, vx: attacker.facing * 140, vy: -30, life: 0.8, kind: "spit" });
       victim.doing = "shake";
+      victim.path = [];
       victim.mood -= 0.6;
-      setTimeout(() => { if (victim.doing === "shake") victim.doing = "work"; }, 700);
+      victim.vx = -attacker.facing * 10;
+      setTimeout(() => { if (victim.doing === "shake") { victim.doing = "wander"; victim.wanderTimer = 0.4; } }, 700);
+      setTimeout(() => { if (attacker.doing === "spit") { attacker.doing = "wander"; attacker.wanderTimer = 0.3; } }, 520);
     }, 120);
   }
 
   post(post: { t: number; by: string; text: string }): void {
-    this.bubbles.push({ text: post.text, by: post.by, until: Date.now() + 6000 });
-    // keep most recent 8
+    this.bubbles.push({ text: post.text, by: post.by, until: Date.now() + 6500 });
     if (this.bubbles.length > 8) this.bubbles.shift();
+    // speaker does a little head bob
+    const s = this.byId.get(post.by);
+    if (s) s.idlePhase += 0.6;
   }
 
   nightIntensity(): number {
-    // night() >0.01 per doc: approximate night curve
     const c = this.clock;
     if (c < 0.72 || c > 0.95) return 0;
     if (c < 0.78) return (c - 0.72) / 0.06;
@@ -195,16 +373,13 @@ export class Xf {
     const cam = this.cam;
     ctx.save();
     ctx.clearRect(0, 0, viewportW, viewportH);
-    // camera transform
     ctx.translate(viewportW / 2, viewportH / 2);
     ctx.scale(cam.zoom, cam.zoom);
     ctx.translate(-cam.x, -cam.y);
 
-    // ground
     ctx.fillStyle = "#cfe8c0";
     ctx.fillRect(0, 0, this.worldW, this.worldH);
 
-    // hills tint
     ctx.fillStyle = "#b8d8a8";
     for (let i = 0; i < 30; i++) {
       const x = (i * 137) % this.worldW;
@@ -214,7 +389,6 @@ export class Xf {
       ctx.fill();
     }
 
-    // roads
     ctx.strokeStyle = "#d8c9a8";
     ctx.lineWidth = 8;
     ctx.beginPath();
@@ -225,11 +399,9 @@ export class Xf {
     }
     ctx.stroke();
 
-    // buildings + agents depth queue
     type Q = { y: number; draw: () => void };
     const queue: Q[] = [];
 
-    // buildings
     const viewLeft = cam.x - viewportW / 2 / cam.zoom - 120;
     const viewRight = cam.x + viewportW / 2 / cam.zoom + 120;
     const viewTop = cam.y - viewportH / 2 / cam.zoom - 120;
@@ -241,25 +413,20 @@ export class Xf {
       queue.push({
         y: by + bh,
         draw: () => {
-          // shadow
           ctx.fillStyle = "rgba(0,0,0,0.08)";
           ctx.fillRect(bx + 6, by + 6, bw, bh);
-          // building
           const isDark = this.nightIntensity() > 0.5;
           ctx.fillStyle = isDark ? "#5a4a3a" : "#e8ddd0";
           ctx.fillRect(bx, by, bw, bh);
           ctx.strokeStyle = "#1b1915";
           ctx.lineWidth = 1;
           ctx.strokeRect(bx, by, bw, bh);
-          // roof
           ctx.fillStyle = "#8b5a3c";
           ctx.fillRect(bx - 2, by - 6, bw + 4, 6);
-          // label
           ctx.fillStyle = "#1b1915";
           ctx.font = "8px JetBrains Mono";
           ctx.textAlign = "center";
           ctx.fillText(b.name, bx + bw / 2, by + bh + 10);
-          // window light at night
           if (this.nightIntensity() > 0.2) {
             ctx.fillStyle = `rgba(255, 220, 120, ${0.55 * this.nightIntensity()})`;
             ctx.fillRect(bx + bw / 2 - 6, by + bh / 2 - 4, 12, 8);
@@ -268,23 +435,22 @@ export class Xf {
       });
     }
 
-    // agents
     for (const a of this.byId.values()) {
       if (a.x < viewLeft || a.x > viewRight || a.y < viewTop || a.y > viewBottom) continue;
       queue.push({
         y: a.y,
         draw: () => {
           const genes = Hc(a.genes);
-          const sk = sf({ t: this.t, walkPhase: (this.t * 1.6) % 1, doing: a.doing, facing: a.facing });
-          // shake effect
-          const shake = a.doing === "shake" ? Math.sin(this.t * 40) * 2 : 0;
+          // walkPhase is now maintained per-agent, not global t
+          const walkPhase = a.walkPhase % 1;
+          const sk = sf({ t: this.t + hashId(a.id) * 0.01, walkPhase, doing: a.doing, facing: a.facing });
+          const shake = a.doing === "shake" ? Math.sin(this.t * 38 + hashId(a.id)) * 2.2 : 0;
+          const idleBob = Math.sin(a.idlePhase * 0.9) * 0.6;
+          const speedBob = a.path.length > 0 ? Math.abs(Math.sin(walkPhase * Math.PI * 2)) * 1.0 : 0;
           const buf = renderLlama(genes, sk);
-          // blit buffer to temp canvas then drawImage scaled
-          // quick path: draw rect placeholder + buffer detail via offscreen
           const scale = 1.4;
           const w = BUF_W * scale;
           const h = BUF_H * scale;
-          // create offscreen canvas lazily
           const off = document.createElement("canvas");
           off.width = BUF_W;
           off.height = BUF_H;
@@ -302,40 +468,43 @@ export class Xf {
           octx.putImageData(img, 0, 0);
 
           ctx.save();
-          ctx.translate(a.x + shake, a.y);
-          if (a.facing === -1) {
-            ctx.scale(-1, 1);
-            ctx.drawImage(off, -w / 2, -h + 12, w, h);
-          } else {
-            ctx.drawImage(off, -w / 2, -h + 12, w, h);
-          }
-          // name label
+          // add bob + shake
+          ctx.translate(a.x + shake, a.y + idleBob * 0.3 - speedBob * 0.4);
+          // subtle squash/stretch when walking
+          const stretch = a.path.length > 0 ? 1 + Math.sin(walkPhase * Math.PI * 2) * 0.035 : 1;
+          const squash = a.path.length > 0 ? 1 - Math.sin(walkPhase * Math.PI * 2) * 0.02 : 1;
+          ctx.scale(a.facing === -1 ? -stretch : stretch, squash);
+          ctx.drawImage(off, -w / 2, -h + 12, w, h);
+          ctx.restore();
+
+          // shadow ellipse
+          ctx.fillStyle = "rgba(0,0,0,0.13)";
+          ctx.beginPath();
+          ctx.ellipse(a.x, a.y + 6, 14 * scale * 0.6, 5 * scale * 0.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.save();
           ctx.setTransform(1, 0, 0, 1, 0, 0);
-          // need to re-apply camera? we are already in world transform; use manual screen projection for labels
-          // compute screen pos
           const sx = (a.x - cam.x) * cam.zoom + viewportW / 2;
-          const sy = (a.y - 56 * scale - cam.y) * cam.zoom + viewportH / 2;
+          const sy = (a.y - 56 * scale - cam.y) * cam.zoom + viewportH / 2 + idleBob * cam.zoom * 0.3;
           ctx.font = "10px JetBrains Mono";
           ctx.textAlign = "center";
-          ctx.fillStyle = a.id === this.followId ? "#c9a86a" : "#1b1915";
           const labelBgW = a.name.length * 6 + 8;
           ctx.fillStyle = "rgba(244,241,234,0.92)";
           ctx.fillRect(sx - labelBgW / 2, sy - 14, labelBgW, 14);
           ctx.strokeStyle = "#1b1915";
           ctx.lineWidth = 0.5;
           ctx.strokeRect(sx - labelBgW / 2, sy - 14, labelBgW, 14);
-          ctx.fillStyle = "#1b1915";
+          ctx.fillStyle = a.id === this.followId ? "#c9a86a" : "#1b1915";
           ctx.fillText(a.name, sx, sy - 4);
           ctx.restore();
         },
       });
     }
 
-    // props: fires etc as puffs already
     queue.sort((a, b) => a.y - b.y);
     for (const q of queue) q.draw();
 
-    // puffs (spit particles)
     for (const p of this.puffs) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.kind === "spit" ? 4 : 3, 0, Math.PI * 2);
@@ -346,8 +515,6 @@ export class Xf {
       ctx.stroke();
     }
 
-    // speech bubbles
-    // sort bubbles: follow priority first
     const sortedBubbles = [...this.bubbles].sort((a, b) => {
       if (a.by === this.followId) return -1;
       if (b.by === this.followId) return 1;
@@ -357,14 +524,13 @@ export class Xf {
       const ag = this.byId.get(bub.by);
       if (!ag) continue;
       const sx = ag.x;
-      const sy = ag.y - 62;
+      const sy = ag.y - 62 - Math.sin(ag.idlePhase * 0.8) * 1.2;
       const pad = 6;
       ctx.font = "11px Instrument Serif";
       const metrics = ctx.measureText(bub.text);
       const bw = Math.min(220, metrics.width + pad * 2 + 10);
       const lines = wrapText(ctx, bub.text, bw - pad * 2);
       const bh = lines.length * 14 + pad * 2 + 6;
-      // bubble rect
       ctx.fillStyle = "#ffffff";
       ctx.strokeStyle = "#1b1915";
       ctx.lineWidth = 1.2;
@@ -373,7 +539,6 @@ export class Xf {
       roundRect(ctx, bx, by, bw, bh, 8);
       ctx.fill();
       ctx.stroke();
-      // tail
       ctx.beginPath();
       ctx.moveTo(sx - 6, by + bh);
       ctx.lineTo(sx, by + bh + 8);
@@ -382,7 +547,6 @@ export class Xf {
       ctx.fillStyle = "#ffffff";
       ctx.fill();
       ctx.stroke();
-      // text
       ctx.fillStyle = "#1b1915";
       ctx.textAlign = "left";
       lines.forEach((line, i) => ctx.fillText(line, bx + pad, by + pad + 12 + i * 14));
@@ -390,7 +554,6 @@ export class Xf {
 
     ctx.restore();
 
-    // day/night tint overlays (screen space)
     if (this.clock > 0.42 && this.clock < 0.72) {
       const alpha = (this.clock - 0.42) * 0.9;
       ctx.fillStyle = `rgba(255, 170, 90, ${Math.min(0.26, alpha)})`;
@@ -400,7 +563,6 @@ export class Xf {
     if (night > 0.01) {
       ctx.fillStyle = `rgba(22, 28, 60, ${night * 0.5})`;
       ctx.fillRect(0, 0, viewportW, viewportH);
-      // halo lighter blending for lamps/fire
       ctx.globalCompositeOperation = "lighter";
       const spots: Array<[number, number]> = [
         [104, 62], [120, 66], [110, 84], [72, 50],

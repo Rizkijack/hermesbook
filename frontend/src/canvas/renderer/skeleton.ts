@@ -24,12 +24,15 @@ let blinkUntil = 0;
 let nextEarTwitch = 2.5;
 
 export function sf(anim: AnimState): Skeleton {
-  const walk = anim.doing === "work" || anim.doing === "graze" ? Math.sin(anim.walkPhase * Math.PI * 2) : 0;
-  const bodyY = Math.abs(walk) * 1.2;
-  const bodyTilt = walk * 0.06;
-  const tail = Math.sin(anim.t * 3.2) * 0.5 + walk * 0.3;
-  const neckLean = walk * 0.08;
-  const neckCurve = Math.sin(anim.t * 1.1) * 0.05;
+  const movingActs = new Set(["work", "graze", "wander", "stroll", "explore", "talk", "argue", "drink"]);
+  const isMoving = movingActs.has(anim.doing);
+  const amp = anim.doing === "explore" ? 1.15 : anim.doing === "graze" ? 0.9 : anim.doing === "talk" ? 0.55 : anim.doing === "drink" ? 0.5 : 1.0;
+  const walk = isMoving ? Math.sin(anim.walkPhase * Math.PI * 2) * amp : 0;
+  const bodyY = Math.abs(walk) * 1.25;
+  const bodyTilt = walk * 0.065;
+  const tail = Math.sin(anim.t * 3.2) * 0.5 + walk * 0.32;
+  const neckLean = walk * 0.085;
+  const neckCurve = Math.sin(anim.t * 1.1) * 0.05 + walk * 0.03;
 
   // blink logic 2.4-6.4s, lid 0.14s
   if (anim.t - lastBlink > 2.4 + (anim.t % 4) * 0.6) {

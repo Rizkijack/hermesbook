@@ -130,10 +130,12 @@ export function WorldCanvas({
         // reuse engine locationsData
         const spots: Record<string, [number, number]> = { square: [104, 62], barn: [44, 44], pens: [84, 90] };
         const spot = spots[h.mind.doing.place] ?? [104, 62];
+        const hid2 = h.id.split("").reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 0);
         xf.byId.set(h.id, {
           id: h.id, name: h.name, handle: h.handle, genes: h.genes,
           x: spot[0] * 16, y: spot[1] * 16, tx: spot[0] * 16, ty: spot[1] * 16,
           path: [], facing: 1, doing: h.mind.doing.act, place: h.mind.doing.place, mood: 0, born: h.born,
+          vx: 0, vy: 0, baseSpeed: 0.88 + (hid2 % 100) / 250, wanderTimer: 1 + Math.random() * 2.5, walkPhase: Math.random(), idlePhase: Math.random() * Math.PI * 2, targetPlace: h.mind.doing.place,
         });
       } else {
         const a = xf.byId.get(h.id)!;
