@@ -5,6 +5,7 @@ import { Hc } from "@hermesbook/shared";
 import { renderLlama } from "./renderer/draw.js";
 import { sf } from "./renderer/skeleton.js";
 import { BUF_W, BUF_H } from "./renderer/pixelBuffer.js";
+import { drawTerrainDecor, pushScenery, tickScenery, LAMP_GLOWS, type View, type SceneDraw } from "./scenery.js";
 
 export interface AgentSprite {
   id: string;
@@ -291,6 +292,9 @@ export class Xf {
         this.cam.ty = f.y;
       }
     }
+
+    // vehicles drive the road network (traffic lights brake them)
+    tickScenery(dt, this.t);
   }
 
   order(id: string, act: string, place: string, _secs: number): void {
@@ -392,6 +396,14 @@ export class Xf {
       ctx.fill();
     }
 
+    const viewLeft0 = cam.x - viewportW / 2 / cam.zoom - 120;
+    const viewRight0 = cam.x + viewportW / 2 / cam.zoom + 120;
+    const viewTop0 = cam.y - viewportH / 2 / cam.zoom - 120;
+    const viewBottom0 = cam.y + viewportH / 2 / cam.zoom + 120;
+    const sceneDraw: SceneDraw = { isDark: isDarkTheme, night: this.nightIntensity(), time: this.t };
+    const sceneView: View = { l: viewLeft0, r: viewRight0, t: viewTop0, b: viewBottom0 };
+    drawTerrainDecor(ctx, sceneView, sceneDraw);
+
     ctx.strokeStyle = isDarkTheme ? "#2e2a25" : "#d8c9a8";
     ctx.lineWidth = 8;
     ctx.beginPath();
@@ -409,6 +421,9 @@ export class Xf {
     const viewRight = cam.x + viewportW / 2 / cam.zoom + 120;
     const viewTop = cam.y - viewportH / 2 / cam.zoom - 120;
     const viewBottom = cam.y + viewportH / 2 / cam.zoom + 120;
+
+    // trees, street furniture, vehicles — pushed first so buildings/agents win ties
+    pushScenery(queue, ctx, sceneView, sceneDraw);
 
     for (const b of LOCATIONS) {
       const bx = b.x * V, by = b.y * V, bw = b.w * V, bh = b.h * V;
@@ -749,6 +764,20 @@ export class Xf {
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(sx, sy, 44 * cam.zoom, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // street lamps
+      for (const g of LAMP_GLOWS) {
+        if (g.x < viewLeft || g.x > viewRight || g.y < viewTop || g.y > viewBottom) continue;
+        const sx = (g.x - cam.x) * cam.zoom + viewportW / 2;
+        const sy = (g.y - cam.y) * cam.zoom + viewportH / 2;
+        const r = 34 * cam.zoom;
+        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+        grad.addColorStop(0, `rgba(255, 224, 140, ${0.42 * night})`);
+        grad.addColorStop(1, "rgba(255, 224, 140, 0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalCompositeOperation = "source-over";
