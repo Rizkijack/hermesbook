@@ -668,32 +668,35 @@ function drawTrafficLight(ctx: CanvasRenderingContext2D, L: Light, d: SceneDraw)
   ctx.save();
   ctx.translate(x, y);
   ctx.fillStyle = "rgba(0,0,0,0.12)";
-  ctx.beginPath(); ctx.ellipse(0, 0, 4, 2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, 5, 2.2, 0, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = isDark ? "#4a4741" : "#3c3a35";
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -26); ctx.stroke();
+  ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -30); ctx.stroke();
   ctx.fillStyle = isDark ? "#26241f" : "#2b2a26";
-  ctx.fillRect(-4.5, -44, 9, 19);
+  ctx.fillRect(-6, -54, 12, 25);
+  ctx.strokeStyle = isDark ? "#8a857c" : "#1b1915";
+  ctx.lineWidth = 0.9;
+  ctx.strokeRect(-6, -54, 12, 25);
   const states: Record<LightState, string> = { red: "#e0402f", yellow: "#e8b83a", green: "#3ab35a" };
   const hS = lightState(time, "h");
   const vS = lightState(time, "v");
   const order: LightState[] = ["red", "yellow", "green"];
   order.forEach((st, i) => {
-    const cy = -40 + i * 6;
+    const cy = -48.5 + i * 7.5;
     const lit = st === hS; // this lamp faces the horizontal road
-    ctx.globalAlpha = lit ? 1 : 0.28;
+    ctx.globalAlpha = lit ? 1 : 0.3;
     ctx.fillStyle = states[st];
-    ctx.beginPath(); ctx.arc(0, cy, 2.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, cy, 3.3, 0, Math.PI * 2); ctx.fill();
     if (lit) {
-      ctx.globalAlpha = 0.35;
-      ctx.beginPath(); ctx.arc(0, cy, 4.6, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.38;
+      ctx.beginPath(); ctx.arc(0, cy, 6, 0, Math.PI * 2); ctx.fill();
     }
   });
   ctx.globalAlpha = 1;
-  // little v-road indicator dot on the side
+  // v-road indicator on the side
   ctx.fillStyle = states[vS];
-  ctx.globalAlpha = 0.9;
-  ctx.fillRect(5, -34, 2.5, 2.5);
+  ctx.globalAlpha = 0.95;
+  ctx.fillRect(7.5, -46, 3.4, 3.4);
   ctx.globalAlpha = 1;
   ctx.restore();
 }

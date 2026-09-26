@@ -1,6 +1,26 @@
 import { describe, it, expect } from "vitest";
 import { LOCATIONS } from "../src/canvas/locationsData.js";
-import { ROADS, TREES, PROPS, LIGHTS, VEHICLES, tickScenery, lightState, drawTerrainDecor } from "../src/canvas/scenery.js";
+import {
+  ROADS, TREES, PROPS, LIGHTS, VEHICLES,
+  tickScenery, lightState, drawTerrainDecor, pushScenery, type QueueItem,
+} from "../src/canvas/scenery.js";
+
+function mockCtx(): [CanvasRenderingContext2D, Record<string, number>] {
+  const calls: Record<string, number> = {};
+  const ctx = new Proxy({} as CanvasRenderingContext2D, {
+    get(_t, prop) {
+      const key = String(prop);
+      calls[key] = (calls[key] ?? 0) + 1;
+      if (key === "createRadialGradient" || key === "createLinearGradient") {
+        return () => ({ addColorStop() {} });
+      }
+      if (key === "measureText") return () => ({ width: 10 });
+      return typeof prop === "string" ? () => undefined : undefined;
+    },
+    set() { return true; },
+  });
+  return [ctx, calls];
+}
 
 function rectHit(
   a: { x: number; y: number; w: number; h: number },
@@ -83,20 +103,39 @@ describe("scenery", () => {
   });
 
   it("draws terrain decor without a DOM canvas (smoke via mock ctx)", () => {
-    const calls: string[] = [];
-    const ctx = new Proxy({} as CanvasRenderingContext2D, {
-      get(_t, prop) {
-        calls.push(String(prop));
-        if (prop === "createRadialGradient" || prop === "createLinearGradient") {
-          return () => ({ addColorStop() {} });
-        }
-        if (prop === "measureText") return () => ({ width: 10 });
-        return typeof prop === "string" ? () => undefined : undefined;
-      },
-      set() { return true; },
-    });
+    const [ctx, calls] = mockCtx();
     const view = { l: 0, r: 3360, t: 0, b: 2048 };
     expect(() => drawTerrainDecor(ctx, view, { isDark: false, night: 0, time: 0 })).not.toThrow();
-    expect(calls.length).toBeGreaterThan(100);
+    const total = Object.values(calls).reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThan(100);
+  });
+
+  it("pushes traffic lights into the draw queue and renders 3 bulbs + pole", () => {
+    const target = LIGHTS[0]!;
+    const view = { l: target.x - 60, r: target.x + 60, t: target.y - 80, b: target.y + 60 };
+    const [ctx, calls] = mockCtx();
+    const queue: QueueItem[] = [];
+    pushScenery(queue, ctx, view, { isDark: false, night: 0, time: 0 });
+    expect(queue.length).toBeGreaterThan(0);
+
+    // execute ONLY the item anchored at the traffic light's base y
+    const lightItems = queue.filter((q) => Math.abs(q.y - target.y) < 0.01);
+    expect(lightItems.length, "traffic light not pushed to queue").toBeGreaterThanOrEqual(1);
+    const before = { ...(calls as Record<string, number>) };
+    for (const item of lightItems) item.draw();
+    const arcs = (calls["arc"] ?? 0) - (before["arc"] ?? 0);
+    const rects = (calls["fillRect"] ?? 0) - (before["fillRect"] ?? 0);
+    expect(arcs, "signal head should draw 3 bulbs (+glow rings)").toBeGreaterThanOrEqual(3);
+    expect(rects, "signal head + v-indicator rects").toBeGreaterThanOrEqual(2);
+  });
+
+  it("pushes vehicles and trees near an intersection view", () => {
+    const target = LIGHTS[0]!;
+    const view = { l: target.x - 200, r: target.x + 200, t: target.y - 200, b: target.y + 200 };
+    const [ctx] = mockCtx();
+    const queue: QueueItem[] = [];
+    pushScenery(queue, ctx, view, { isDark: true, night: 0.8, time: 5 });
+    expect(queue.length).toBeGreaterThanOrEqual(1);
+    expect(() => { for (const item of queue) item.draw(); }).not.toThrow();
   });
 });
