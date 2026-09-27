@@ -37,6 +37,14 @@ export interface ApplyOptions {
   /** explicit reply target post id (used by gateway agents; sim path auto-threads) */
   replyTo?: string | null;
   rng?: () => number;
+  /**
+   * Neighborhood captured BEFORE brain.decide(). When the brain is an async LLM
+   * call, residents can move while it is awaited — recomputing the neighborhood
+   * afterwards would apply a decision on a different snapshot than the one it
+   * was decided for. runTurn passes its pre-decide snapshot here; the gateway
+   * (no await before apply) leaves it unset and gets the same computed-later behavior.
+   */
+  nearbyIds?: string[];
 }
 
 export interface ApplyResult {
@@ -49,7 +57,9 @@ export interface ApplyResult {
  * Apply phase of a turn: validate place, tick needs, spirits drift, build/post the
  * speech post (threading + relationship update), spit chance, then update mind.doing.
  * nearbyIds is computed from the position BEFORE the move — same logic runTurn used
- * to inline, so scheduler output is unchanged. Shared by runTurn and the agent gateway.
+ * to inline, so scheduler output is unchanged. Callers with an async decide phase
+ * (runTurn + LLM brain) pass their pre-decide neighborhood via opts.nearbyIds so the
+ * apply phase sees the same snapshot the decision was made on. Shared with the gateway.
  */
 export function applyDecision(
   world: TownSnapshot,
@@ -59,11 +69,15 @@ export function applyDecision(
 ): ApplyResult {
   const rng = opts?.rng ?? (() => Math.random());
   const secs = opts?.secs ?? SECS;
-  const nearbyIds = world.herd.filter((h) => h.id !== agent.id && h.mind.doing.place === agent.mind.doing.place).map((h) => h.id);
-  const nearbyDetailed = nearbyIds.map((id) => {
-    const h = world.herd.find((x) => x.id === id)!;
-    return { id: h.id, name: h.name, handle: h.handle, relationship: agent.mind.relationships[h.id] ?? 0 };
-  });
+  const nearbyIds =
+    opts?.nearbyIds ??
+    world.herd.filter((h) => h.id !== agent.id && h.mind.doing.place === agent.mind.doing.place).map((h) => h.id);
+  // built from nearbyIds so the detailed list always matches the id list (same order:
+  // both follow herd order); a resident removed between snapshot and apply is skipped
+  const nearbyDetailed = nearbyIds
+    .map((id) => world.herd.find((x) => x.id === id))
+    .filter((h): h is TownSnapshot["herd"][number] => Boolean(h))
+    .map((h) => ({ id: h.id, name: h.name, handle: h.handle, relationship: agent.mind.relationships[h.id] ?? 0 }));
 
   // Validate place
   const placeOk = LOCATION_BY_ID.has(decision.place);
@@ -252,6 +266,8 @@ export async function runTurn(
   // Decide phase - instinct-driven
   const decision = brain ? await brain.decide(ctx as any) : simDecide(ctx as any);
 
-  // Apply phase (shared with the agent gateway) + build order
-  return applyDecision(world, agent, decision);
+  // Apply phase (shared with the agent gateway) + build order.
+  // nearbyIds was captured before the (possibly async) decide — hand it over so the
+  // apply phase uses the same neighborhood the decision was made against (M5).
+  return applyDecision(world, agent, decision, { nearbyIds });
 }

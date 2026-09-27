@@ -13,7 +13,8 @@ import { createBrain } from "./brain.js";
 import { createScheduler } from "./scheduler.js";
 import { runTurn } from "./turn.js";
 import { createGatewayRouter } from "./gateway.js";
-import { isEligibleForSim } from "./agents.js";
+// shared helpers — single definitions live in agents.ts (dedup with gateway.ts)
+import { CONTROL_CHARS, clientIp, createRateLimiter, pickNextSimId } from "./agents.js";
 import { z } from "zod";
 import { existsSync } from "fs";
 import path from "path";
@@ -58,17 +59,10 @@ const app: import("express").Express = express();
 app.use(cors());
 app.use(express.json({ limit: "64kb" }));
 
-// Rate limit in-memory for fork per IP per hour
-const forkRate = new Map<string, number[]>();
-function checkRateLimit(ip: string, max = 6, windowMs = 60 * 60 * 1000): boolean {
-  const now = Date.now();
-  const arr = forkRate.get(ip) ?? [];
-  const recent = arr.filter((t) => now - t < windowMs);
-  if (recent.length >= max) return false;
-  recent.push(now);
-  forkRate.set(ip, recent);
-  return true;
-}
+// Rate limit in-memory for fork per IP per hour (shared bounded limiter —
+// see the caveat in agents.ts: per-instance memory, so N × limit behind a
+// multi-instance deployment such as Vercel)
+const rateLimitFork = createRateLimiter(6, 60 * 60 * 1000);
 
 // SSE clients
 const clients = new Set<import("express").Response>();
@@ -119,8 +113,7 @@ const forkSchema = z.object({
 });
 
 app.post("/api/fork", async (req, res) => {
-  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.ip ?? "unknown";
-  if (!checkRateLimit(ip)) {
+  if (!rateLimitFork(clientIp(req))) {
     res.status(429).json({ error: "rate limited, try again later" });
     return;
   }
@@ -150,7 +143,7 @@ app.post("/api/fork", async (req, res) => {
   }
 
   // moderate: no control chars
-  if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(name + bio)) {
+  if (CONTROL_CHARS.test(name + bio)) {
     res.status(400).json({ error: "invalid characters" });
     return;
   }
@@ -254,6 +247,18 @@ app.post("/api/quests/refresh", (_req, res) => {
 // External agent gateway (join/resume/me/perceive/act/say/quests/boards)
 app.use(createGatewayRouter({ world, broadcast, DATA_PATH, scheduler }));
 
+// MCP Streamable HTTP transport — opt-in via MCP_HTTP=1 so the default bundle
+// never pays for the MCP SDK. Dynamic import keeps the dependency lazy.
+if (process.env.MCP_HTTP === "1") {
+  void import("@hermesbook/mcp/http")
+    .then(({ createMcpHttpHandler }) => {
+      const handler = createMcpHttpHandler();
+      app.post("/mcp", (req, res) => void handler(req, res));
+      console.log("[mcp] Streamable HTTP mounted at POST /mcp");
+    })
+    .catch((e) => console.error("[mcp] failed to mount /mcp:", e));
+}
+
 // health
 app.get("/api/health", (_req, res) => res.json({ ok: true, now: Date.now() }));
 
@@ -265,17 +270,9 @@ function startScheduler(): void {
   if (turnTimer) clearInterval(turnTimer);
   turnTimer = setInterval(async () => {
     // pick the next resident eligible for sim control: skip external agents that
-    // are actively driven by their gateway (AFK externals still get sim turns)
-    let id: string | null = null;
-    const maxTries = Math.max(1, world.herd.length);
-    for (let i = 0; i < maxTries; i++) {
-      const candidate = scheduler.next();
-      if (!candidate) break;
-      if (isEligibleForSim(world, candidate, Date.now())) {
-        id = candidate;
-        break;
-      }
-    }
+    // are actively driven by their gateway (AFK externals still get sim turns).
+    // pickNextSimId (agents.ts) owns that skip logic and is unit-tested there.
+    const id = pickNextSimId(world, scheduler, Date.now());
     if (!id) return;
     const result = await runTurn(world, id, brain);
     if (!result || !result.order) return;

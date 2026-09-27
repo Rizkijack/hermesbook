@@ -14,6 +14,9 @@ importers:
 
   backend:
     dependencies:
+      '@hermesbook/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@hermesbook/shared':
         specifier: workspace:*
         version: link:../shared

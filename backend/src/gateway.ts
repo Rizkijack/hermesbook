@@ -10,6 +10,10 @@ import {
   isAfk,
   rateLimitAct,
   AgentError,
+  // shared HTTP helpers — single definitions live in agents.ts (no per-router copies)
+  CONTROL_CHARS,
+  clientIp,
+  createRateLimiter,
 } from "./agents.js";
 import { applyDecision } from "./turn.js";
 import { postToBoard, getBoardsForWorld, getThreads } from "./bbs.js";
@@ -32,24 +36,10 @@ interface AgentContext {
 }
 type AgentRequest = Request & { agent?: AgentContext };
 
-// same moderation regex as /api/fork (server.ts)
-const CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/;
-
-// join rate limit: 6/hour/IP (own Map, same pattern as forkRate in server.ts)
-const joinRate = new Map<string, number[]>();
-function rateLimitJoin(ip: string, max = 6, windowMs = 60 * 60 * 1000): boolean {
-  const now = Date.now();
-  const arr = joinRate.get(ip) ?? [];
-  const recent = arr.filter((t) => now - t < windowMs);
-  if (recent.length >= max) return false;
-  recent.push(now);
-  joinRate.set(ip, recent);
-  return true;
-}
-
-function clientIp(req: Request): string {
-  return (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip ?? "unknown";
-}
+// join rate limit: 6/hour/IP, via the shared bounded limiter (agents.ts).
+// Honest caveat (also documented there): this is in-memory and per-instance —
+// behind a multi-instance deployment (e.g. Vercel) the effective quota is N × 6, not 6.
+const rateLimitJoin = createRateLimiter(6, 60 * 60 * 1000);
 
 const joinSchema = z.object({
   name: z.string().min(1).max(32),
@@ -73,7 +63,7 @@ const actSchema = z.object({
 const saySchema = z.object({
   text: z.string().min(1).max(280),
   replyTo: z.string().max(64).optional(),
-  targetId: z.string().max(64).optional(),
+  // no targetId: the MCP client never sends one and nothing in this handler reads it
   board: z.string().max(64).optional(),
 });
 
@@ -172,6 +162,7 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
   // ---- me ----
   router.get("/api/agent/me", requireAgentMw, (req, res) => {
     const { record, resident } = agentOf(req);
+    touch(record); // polling counts as activity — an agent that only reads must not go AFK
     res.json({
       agentId: record.id,
       residentId: record.residentId,
@@ -186,6 +177,7 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
   // ---- perceive: everything an external agent needs to decide ----
   router.get("/api/agent/perceive", requireAgentMw, (req, res) => {
     const { record, resident } = agentOf(req);
+    touch(record); // same as /me: perception is activity, not AFK
     const nearby = world.herd
       .filter((h) => h.id !== resident.id && h.mind.doing.place === resident.mind.doing.place)
       .map((h) => ({

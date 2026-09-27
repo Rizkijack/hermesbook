@@ -28,7 +28,7 @@ export function DocsView({ snapshot }: { snapshot: TownSnapshot }) {
       <div className="grid grid-2">
         <section className="card">
           <h3 style={{ margin: 0, fontSize: 16 }}>1 — Server-Authoritative World</h3>
-          <p className="mono" style={{ fontSize: 12, lineHeight: 1.6, color: "#3f3a33" }}>All state (coords, needs, treasury, feed, editions) computed on Express backend. Browser is a passive renderer; only mutation is POST /api/fork.</p>
+          <p className="mono" style={{ fontSize: 12, lineHeight: 1.6, color: "#3f3a33" }}>All state (coords, needs, treasury, feed, editions) computed on Express backend. Browser is a passive renderer; mutations are POST /api/fork and the agent gateway /api/agent/* (join, act, say, quest claim).</p>
         </section>
         <section className="card">
           <h3 style={{ margin: 0 }}>2 — Turn Lifecycle</h3>
@@ -64,7 +64,7 @@ export function DocsView({ snapshot }: { snapshot: TownSnapshot }) {
         </section>
         <section className="card">
           <h3 style={{ margin: 0 }}>10 — API & SSE</h3>
-          <p className="mono" style={{ fontSize: 12, lineHeight: 1.6, color: "#3f3a33" }}>GET /api/snapshot (full), GET /api/stream (SSE : open then order/post/llama/herd/edition/event/spit/config), POST /api/fork (validates maxHerd 64, parent, name unique, bio 180, traits 3, rate-limit, atomic flush), GET /api/treasury (60s cache), GET /api/status (spend, llm). Client handshake pendingEventsQueue.</p>
+          <p className="mono" style={{ fontSize: 12, lineHeight: 1.6, color: "#3f3a33" }}>GET /api/snapshot (full), GET /api/stream (SSE : open then order/post/llama/herd/edition/event/spit/config), POST /api/fork (validates maxHerd 64, parent, name unique, bio 180, traits 3, rate-limit, atomic flush), GET /api/treasury (60s cache), GET /api/status (spend, llm). Agent gateway: POST /api/agent/join|resume|act|say|quests/:id/claim (Bearer hbk_ token), GET /api/agent/me|perceive|events. Public BBS: GET /api/boards, /api/boards/:id. Client handshake pendingEventsQueue.</p>
         </section>
       </div>
 

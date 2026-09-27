@@ -53,14 +53,13 @@ const MAX_RATE_KEYS = 5000;
 export function createRateLimiter(max: number, windowMs: number): (key: string) => boolean {
   // insertion order = age (oldest first), which the size cap relies on
   const buckets = new Map<string, number[]>();
-  let calls = 0;
   return (key: string): boolean => {
     const now = Date.now();
-    // periodic light sweep: forget keys whose window fully elapsed
-    if ((calls = (calls + 1) % 16) === 0 || buckets.size >= MAX_RATE_KEYS) {
-      for (const [k, v] of buckets) {
-        if (v.length === 0 || now - v[v.length - 1]! >= windowMs) buckets.delete(k);
-      }
+    // Evict keys whose whole window elapsed on EVERY call (not only when the same
+    // key returns), so stale IPs cannot linger. Bounded by MAX_RATE_KEYS, and only
+    // used by the low-rate join/fork endpoints — the ≤5000-entry scan is negligible.
+    for (const [k, v] of buckets) {
+      if (v.length === 0 || now - v[v.length - 1]! >= windowMs) buckets.delete(k);
     }
     const arr = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
     if (arr.length >= max) {
@@ -165,8 +164,12 @@ export function rollbackJoin(world: TownSnapshot, agentId: string, residentId: s
 function hashEquals(a: string, b: string): boolean {
   const ba = Buffer.from(a, "utf8");
   const bb = Buffer.from(b, "utf8");
-  if (ba.length !== bb.length) return false;
-  return timingSafeEqual(ba, bb);
+  if (ba.length !== bb.length) return false; // timingSafeEqual throws on length mismatch
+  try {
+    return timingSafeEqual(ba, bb);
+  } catch {
+    return false; // defensive: never fail open
+  }
 }
 
 /** Resolve a bearer token to its registry entry, or null when invalid/orphaned. */
