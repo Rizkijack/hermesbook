@@ -148,6 +148,25 @@ export function makeResidentFromFork(parent: Resident, name: string, bio: string
   };
 }
 
+/**
+ * Fresh resident created by an external agent joining through the gateway.
+ * `mind.control` is set by the caller (joinWorld sets "external" for both the
+ * fresh and the forked branch) so it is only assigned in one place.
+ */
+export function createAgentResident(opts: { name: string; bio?: string; job?: string; traits?: string[]; handle?: string }): Resident {
+  const resident = makeResident(
+    {
+      name: opts.name,
+      bio: opts.bio,
+      job: opts.job,
+      traits: opts.traits,
+      handle: opts.handle,
+    },
+    Math.random
+  );
+  return resident;
+}
+
 const WEATHERS = [
   "Rain over the east meadow.",
   "Fog rolling down the valley.",

@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import type { TownSnapshot, Resident } from "@hermesbook/shared";
 import { Hc, rf, encodeGenes } from "@hermesbook/shared";
-import { saveAtomically, saveDebounced } from "./persist.js";
+import { saveAtomically, saveDebounced, flushDebounced } from "./persist.js";
 import { createInitialWorld, makeResidentFromFork, generateEdition, generateWeatherEvent } from "./world.js";
 import { loadWithRecovery } from "./persist.js";
 import { updateQuestProgress, claimQuest, refreshExpiredQuests, generateQuest, createInitialQuests } from "./quests.js";
@@ -12,6 +12,8 @@ import { spend } from "./spend.js";
 import { createBrain } from "./brain.js";
 import { createScheduler } from "./scheduler.js";
 import { runTurn } from "./turn.js";
+import { createGatewayRouter } from "./gateway.js";
+import { isEligibleForSim } from "./agents.js";
 import { z } from "zod";
 import { existsSync } from "fs";
 import path from "path";
@@ -82,7 +84,9 @@ function broadcast(msg: unknown): void {
 
 // GET /api/snapshot
 app.get("/api/snapshot", (_req, res) => {
-  res.json({ ...world, now: Date.now() });
+  // the agent registry holds token hashes — credentials never leave the server
+  const { agents: _agents, ...publicWorld } = world;
+  res.json({ ...publicWorld, now: Date.now() });
 });
 
 // GET /api/stream SSE
@@ -247,6 +251,9 @@ app.post("/api/quests/refresh", (_req, res) => {
   res.json({ before, after: world.quests.length, quests: world.quests });
 });
 
+// External agent gateway (join/resume/me/perceive/act/say/quests/boards)
+app.use(createGatewayRouter({ world, broadcast, DATA_PATH, scheduler }));
+
 // health
 app.get("/api/health", (_req, res) => res.json({ ok: true, now: Date.now() }));
 
@@ -257,7 +264,18 @@ let turnCount = 0;
 function startScheduler(): void {
   if (turnTimer) clearInterval(turnTimer);
   turnTimer = setInterval(async () => {
-    const id = scheduler.next();
+    // pick the next resident eligible for sim control: skip external agents that
+    // are actively driven by their gateway (AFK externals still get sim turns)
+    let id: string | null = null;
+    const maxTries = Math.max(1, world.herd.length);
+    for (let i = 0; i < maxTries; i++) {
+      const candidate = scheduler.next();
+      if (!candidate) break;
+      if (isEligibleForSim(world, candidate, Date.now())) {
+        id = candidate;
+        break;
+      }
+    }
     if (!id) return;
     const result = await runTurn(world, id, brain);
     if (!result || !result.order) return;
@@ -326,5 +344,19 @@ function stopScheduler(): void {
 
 // Do not auto-start in test env (vitest sets NODE_ENV=test)
 if (process.env.NODE_ENV !== "test") startScheduler();
+
+// Flush the debounced save on shutdown: without this a crash/SIGINT right after an
+// agent action would drop it (the write already happened for act/say/join/claim —
+// this covers the remaining debounced paths such as resume).
+async function shutdown(): Promise<void> {
+  try {
+    await flushDebounced();
+  } catch {
+    // best effort — never block exit on a failed flush
+  }
+  process.exit(0);
+}
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
 
 export { app, world, broadcast, scheduler, brain, startScheduler, stopScheduler, DATA_PATH };

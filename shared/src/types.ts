@@ -28,7 +28,19 @@ export interface Resident {
     obsession: string;
     memories: string[];
     relationships: Record<string, number>;
+    /** who drives this resident: internal sim scheduler (default/absent) or an external agent gateway */
+    control?: "sim" | "external";
   };
+}
+
+/** Registry entry for an external agent joined via the gateway. Only the sha256 hash of the token is stored. */
+export interface AgentRecord {
+  id: string;
+  residentId: string;
+  tokenHash: string;
+  origin: string;
+  joinedAt: number;
+  lastActAt: number;
 }
 
 export interface Post {
@@ -109,6 +121,8 @@ export interface TownSnapshot {
   projects: Project[];
   factions: Faction[];
   quests: Quest[];
+  /** external agent registry (optional — older saves without it stay valid) */
+  agents?: AgentRecord[];
 }
 
 export interface TownConfig {
