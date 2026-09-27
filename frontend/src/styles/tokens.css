@@ -157,8 +157,11 @@ canvas.town {
   border: 2px solid var(--rule);
   background: var(--field);
   image-rendering: pixelated;
+  touch-action: none;
   transition: border-color 0.28s ease, background-color 0.28s ease;
 }
+
+canvas.town:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* theme toggle */
 .theme-toggle {

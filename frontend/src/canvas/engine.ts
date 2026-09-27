@@ -7,6 +7,12 @@ import { sf } from "./renderer/skeleton.js";
 import { BUF_W, BUF_H } from "./renderer/pixelBuffer.js";
 import { drawTerrainDecor, pushScenery, tickScenery, LAMP_GLOWS, type View, type SceneDraw } from "./scenery.js";
 
+export const MIN_ZOOM = 0.45;
+export const MAX_ZOOM = 2.8;
+/** Where the camera starts, and where "Reset" returns to. */
+const CAM_HOME_X = 1600;
+const CAM_HOME_Y = 900;
+
 export interface AgentSprite {
   id: string;
   name: string;
@@ -54,7 +60,7 @@ function hashId(id: string): number {
 }
 
 export class Xf {
-  cam = { x: 1600, y: 900, tx: 1600, ty: 900, zoom: 1, tz: 1 };
+  cam = { x: CAM_HOME_X, y: CAM_HOME_Y, tx: CAM_HOME_X, ty: CAM_HOME_Y, zoom: 1, tz: 1 };
   clock = 0; // 0..1
   dayLength = 900;
   byId = new Map<string, AgentSprite>();
@@ -65,6 +71,10 @@ export class Xf {
 
   worldW = WorldWidth;
   worldH = WorldHeight;
+  /** CSS px size of the canvas viewport, kept fresh by setViewport(). */
+  viewW = 0;
+  viewH = 0;
+  dpr = 1;
 
   constructor(snapshot?: { herd: Array<{ id: string; name: string; handle: string; genes: string; mind: { doing: { place: string; act: string } }; born: number; }>; }) {
     if (snapshot) {
@@ -102,6 +112,88 @@ export class Xf {
 
   setFollow(id: string | null) {
     this.followId = id;
+  }
+
+  // ---- camera -------------------------------------------------------------
+  // Rule: any manual pan/zoom owns the camera and drops follow, so the view
+  // never fights the pointer. The camera is only re-targeted by follow mode.
+
+  setViewport(w: number, h: number, dpr = this.dpr): void {
+    this.viewW = w;
+    this.viewH = h;
+    this.dpr = dpr > 0 ? dpr : 1;
+  }
+
+  /** Pan by a screen-space delta (CSS px), 1:1 with the pointer. */
+  panBy(dxScreen: number, dyScreen: number): void {
+    const z = this.cam.zoom || 1;
+    this.cam.tx -= dxScreen / z;
+    this.cam.ty -= dyScreen / z;
+    this.cam.x = this.cam.tx;
+    this.cam.y = this.cam.ty;
+    this.followId = null;
+    this.clampCam();
+  }
+
+  /**
+   * Zoom by `factor` anchored on a canvas-relative screen point: the world
+   * point under that point stays put (unless clampCam pulls it back inside the
+   * map). Applied instantly so the anchor cannot drift between zoom targets.
+   */
+  zoomAt(sx: number, sy: number, factor: number): void {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    const cam = this.cam;
+    const z0 = cam.zoom;
+    const z1 = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z0 * factor));
+    if (z1 === z0) return;
+    const ox = sx - this.viewW / 2;
+    const oy = sy - this.viewH / 2;
+    const wx = cam.x + ox / z0;
+    const wy = cam.y + oy / z0;
+    cam.zoom = z1;
+    cam.tz = z1;
+    cam.tx = wx - ox / z1;
+    cam.ty = wy - oy / z1;
+    cam.x = cam.tx;
+    cam.y = cam.ty;
+    this.followId = null;
+    this.clampCam();
+  }
+
+  /**
+   * Keep the viewport over the town instead of letting it drift into empty
+   * space. When the view is wider than the world (zoomed out past the map) the
+   * camera is pinned to the world centre.
+   */
+  clampCam(): void {
+    const cam = this.cam;
+    const z = cam.zoom || 1;
+    const halfW = this.viewW / (2 * z);
+    const halfH = this.viewH / (2 * z);
+    const cx = this.worldW / 2;
+    const cy = this.worldH / 2;
+    const loX = Math.min(cx, halfW);
+    const hiX = Math.max(cx, this.worldW - halfW);
+    const loY = Math.min(cy, halfH);
+    const hiY = Math.max(cy, this.worldH - halfH);
+    cam.tx = Math.max(loX, Math.min(hiX, cam.tx));
+    cam.ty = Math.max(loY, Math.min(hiY, cam.ty));
+    cam.x = Math.max(loX, Math.min(hiX, cam.x));
+    cam.y = Math.max(loY, Math.min(hiY, cam.y));
+  }
+
+  /** Back to the town overview, follow dropped. */
+  resetCam(): void {
+    this.followId = null;
+    this.cam.x = this.cam.tx = CAM_HOME_X;
+    this.cam.y = this.cam.ty = CAM_HOME_Y;
+    this.cam.zoom = this.cam.tz = 1;
+    this.clampCam();
+  }
+
+  /** Viewport centre in CSS px — the anchor for keyboard zoom. */
+  centerPoint(): { x: number; y: number } {
+    return { x: this.viewW / 2, y: this.viewH / 2 };
   }
 
   tick(dt: number): void {
@@ -290,8 +382,11 @@ export class Xf {
       if (f) {
         this.cam.tx = f.x;
         this.cam.ty = f.y;
+      } else {
+        this.followId = null; // followed agent left the herd — stop chasing
       }
     }
+    this.clampCam();
 
     // vehicles drive the road network (traffic lights brake them)
     tickScenery(dt, this.t);
@@ -672,7 +767,7 @@ export class Xf {
           ctx.fill();
 
           ctx.save();
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
           const sx = (a.x - cam.x) * cam.zoom + viewportW / 2;
           const sy = (a.y - 56 * scale - cam.y) * cam.zoom + viewportH / 2 + idleBob * cam.zoom * 0.3;
           ctx.font = "10px JetBrains Mono";
