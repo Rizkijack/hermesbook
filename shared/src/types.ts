@@ -200,6 +200,15 @@ export interface Season {
   state: "trials" | "semifinals" | "final" | "closed";
   standings: SeasonStanding[];
   champion?: string;
+  /**
+   * Contest ids already folded into `standings`.
+   *
+   * Optional because older saves predate it, but it MUST live on the object
+   * rather than in a module-level cache: the case idempotency exists for is a
+   * restart, and that is exactly when an in-process cache is empty. The save
+   * is written wholesale, so a property on the season survives the round trip.
+   */
+  appliedContests?: string[];
 }
 
 export interface TownSnapshot {

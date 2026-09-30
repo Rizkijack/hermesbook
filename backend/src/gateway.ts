@@ -1,6 +1,7 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
-import type { TownSnapshot, Resident, AgentRecord, Post } from "@hermesbook/shared";
+import type { TownSnapshot, Resident, AgentRecord, Post, Contest } from "@hermesbook/shared";
+import { CONTEST } from "@hermesbook/shared";
 import { z } from "zod";
 import {
   joinWorld,
@@ -20,6 +21,7 @@ import { postToBoard, getBoardsForWorld, getThreads } from "./bbs.js";
 import { dayClock } from "./needs.js";
 import { LOCATION_BY_ID } from "./locations.js";
 import { claimQuest, updateQuestProgress } from "./quests.js";
+import { registerForContest, noteSpit, upcomingContest, withdrawFromContest } from "./tournament.js";
 import { saveAtomically, saveDebounced } from "./persist.js";
 
 export interface GatewayContext {
@@ -248,7 +250,14 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
       { replyTo: replyTo ?? null, board, secs }
     );
     broadcast(result.order);
-    if (result.spit) broadcast(result.spit);
+    if (result.spit) {
+      broadcast(result.spit);
+      // The scheduler's own spit reaches the sampler via the turn loop; this
+      // one would not, and `endure` is the objective that reads `wasSpit`
+      // (08 §4.2). An agent spat on through its own `act` must not be told it
+      // was never spat on.
+      noteSpit(result.spit.to);
+    }
     if (result.post) broadcast({ type: "post", post: result.post });
     touch(record);
     // external agents count toward town quests exactly like sim turns do
@@ -257,6 +266,62 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
     await saveAtomically(DATA_PATH, world);
     res.json({ ok: true, order: result.order, post: result.post ?? null, doing: resident.mind.doing, needs: resident.needs });
   }));
+
+  // ---- contest registration (08 §7, D4/D6) ----
+  // One window per in-game day (D2), open for a single `CONTEST.announceMs`.
+  // The limit is generous for a bot that polls and still tight enough that a
+  // confused client cannot hammer the roster.
+  const rateLimitContest = createRateLimiter(5, 60 * 1000);
+
+  function contestPayload(contest: Contest | null) {
+    if (!contest) return { contest: null, registered: 0, capacity: CONTEST.maxEntrants };
+    // `samples` is withheld: it is up to CONTEST.persistSamples rows per entrant
+    // and the roster is public information. The evidence is what the Daily
+    // Spit cites afterwards, quoted through `result.standings[].detail`.
+    const { samples: _samples, ...rest } = contest;
+    return { contest: rest, registered: contest.entrants.length, capacity: CONTEST.maxEntrants };
+  }
+
+  router.post("/api/agent/contest/register", requireAgentMw, asyncH(async (req, res) => {
+    const { record, resident } = agentOf(req);
+    if (!rateLimitContest(record.id)) {
+      res.status(429).json({ error: "rate limited" });
+      return;
+    }
+    const outcome = registerForContest(world, resident.id);
+    if (!outcome.ok) {
+      res.status(outcome.status).json({ error: outcome.error });
+      return;
+    }
+    touch(record);
+    await saveAtomically(DATA_PATH, world);
+    broadcast({ type: "contest", contest: outcome.contest, reason: "announced" });
+    res.json(contestPayload(outcome.contest ?? null));
+  }));
+
+  router.delete("/api/agent/contest/register", requireAgentMw, asyncH(async (req, res) => {
+    const { record, resident } = agentOf(req);
+    if (!rateLimitContest(record.id)) {
+      res.status(429).json({ error: "rate limited" });
+      return;
+    }
+    const outcome = withdrawFromContest(world, resident.id);
+    if (!outcome.ok) {
+      res.status(outcome.status).json({ error: outcome.error });
+      return;
+    }
+    touch(record);
+    await saveAtomically(DATA_PATH, world);
+    broadcast({ type: "contest", contest: outcome.contest, reason: "announced" });
+    res.json(contestPayload(outcome.contest ?? null));
+  }));
+
+  // Public on purpose: an agent has to be able to *discover* that a contest is
+  // open before it can register for it, and the roster is already visible to
+  // every other contestant anyway.
+  router.get("/api/contest/upcoming", (_req, res) => {
+    res.json({ ...contestPayload(upcomingContest(world)), now: Date.now() });
+  });
 
   // ---- say (Bearer, 30/min) ----
   router.post("/api/agent/say", requireAgentMw, asyncH(async (req, res) => {

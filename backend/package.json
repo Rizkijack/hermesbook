@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck:test": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@hermesbook/mcp": "workspace:*",

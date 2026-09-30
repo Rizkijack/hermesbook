@@ -4,6 +4,7 @@ import { Hc } from "@hermesbook/shared";
 import { seededRandom } from "@hermesbook/shared";
 import { LOCATIONS } from "./locations.js";
 import { createInitialQuests } from "./quests.js";
+import { createSeason } from "./season.js";
 
 const JOBS = ["shearer", "miller", "librarian", "clerk", "baker", "herder", "scribe", "smith"] as const;
 const OBSESSIONS = [
@@ -111,8 +112,9 @@ export function createInitialWorld(): TownSnapshot {
 
   const quests = createInitialQuests({ herd, feed, events, editions, projects, factions, now: Date.now(), config: { ...defaultConfig } } as TownSnapshot);
 
-  return {
-    now: Date.now(),
+  const now = Date.now();
+  const world: TownSnapshot = {
+    now,
     config: { ...defaultConfig },
     herd,
     feed,
@@ -121,7 +123,16 @@ export function createInitialWorld(): TownSnapshot {
     projects,
     factions,
     quests,
+    // Hermes Trials (08 §5). A season exists from the first tick so the contest
+    // schedule has a phase to read; an empty leaderboard is the honest state on
+    // a fresh save, and it is exactly the cold-start the house agents solve.
+    season: createSeason(1, now),
   };
+  // The three house bots are NOT seeded here. `houseagents.ts` needs
+  // `createAgentResident` from this module, so calling it from here would close
+  // an import cycle between the two. `server.ts` seeds them at boot instead,
+  // where both modules are already loaded.
+  return world;
 }
 
 export function makeResidentFromFork(parent: Resident, name: string, bio: string, traits: string[], job: string, childGenes: string): Resident {

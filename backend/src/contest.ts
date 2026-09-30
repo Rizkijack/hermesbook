@@ -379,7 +379,7 @@ export function scoreContest(input: ScoreInput): ContestResult {
  * and not merely last in the array — the sampler appends chronologically
  * today, but nothing here should depend on that holding.
  */
-export function trimSamples(samples: readonly ContestSample[], max = CONTEST.maxSamples): ContestSample[] {
+export function trimSamples(samples: readonly ContestSample[], max: number = CONTEST.persistSamples): ContestSample[] {
   if (samples.length <= max) return [...samples];
   const ordered = [...samples].sort((a, b) => a.t - b.t);
   return ordered.slice(ordered.length - max);

@@ -178,7 +178,7 @@ for (const kind of kinds) {
 const trail = driveWindow("gather_at", venueFor("gather_at"));
 const fat = Array.from({ length: 600 }, (_, i) => trail[i % trail.length]);
 const trimmed = trimSamples(fat);
-check(trimmed.length === CONTEST.maxSamples, `trimSamples caps a 600-row trail at ${CONTEST.maxSamples} (08 §11)`);
+check(trimmed.length === CONTEST.persistSamples, `trimSamples caps a 600-row trail at ${CONTEST.persistSamples} (08 §11)`);
 check(
   trimmed[trimmed.length - 1].t >= trimmed[0].t,
   "trimSamples returns a chronological window, newest last"

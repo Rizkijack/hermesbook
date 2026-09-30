@@ -46,8 +46,19 @@ export const CONTEST = {
   maxEntrants: 6,
   /** rank points: 1st, 2nd, 3rd, everyone else (08 §4.3). */
   pointsForRank: [10, 5, 1] as const,
-  /** evidence kept per contest on persist (08 §11: ~600 raw rows, trim to 200). */
-  maxSamples: 200,
+  /**
+   * Evidence kept per contest **once it is over** (08 §11: ~600 raw rows, trim
+   * to 200).
+   *
+   * Deliberately a *persist* budget and not a live one. Trimming while the
+   * contest is running would change what the resolver gets to see: a 3-minute
+   * window at a 1.8s tick is 100 ticks, a six-horse roster is ~600 rows, and
+   * keeping the newest 200 would score the contest on its last third — with
+   * early positioning invisible. The live trail is bounded by the window
+   * anyway (`durationMs` ÷ tick × entrants), so it needs no cap; it is trimmed
+   * the moment the contest resolves, which is when it becomes save data.
+   */
+  persistSamples: 200,
 } as const;
 
 /**

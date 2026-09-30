@@ -13,6 +13,8 @@ import { createBrain } from "./brain.js";
 import { createScheduler } from "./scheduler.js";
 import { runTurn } from "./turn.js";
 import { createGatewayRouter } from "./gateway.js";
+import { ensureHouseResidents } from "./houseagents.js";
+import { retireResolved, tickTournament, type TournamentEvent } from "./tournament.js";
 // shared helpers — single definitions live in agents.ts (dedup with gateway.ts)
 import { CONTROL_CHARS, clientIp, createRateLimiter, pickNextSimId } from "./agents.js";
 import { z } from "zod";
@@ -52,9 +54,17 @@ if (world.quests.length === 0) {
   world.quests = createInitialQuests(world);
 }
 
+// Hermes Trials (08 §8): the three house bots, seeded here rather than in
+// `createInitialWorld` because `houseagents.ts` imports `createAgentResident`
+// from `world.ts` — seeding there would close an import cycle. Idempotent, so a
+// save written before this existed gains the bots on the next boot and one
+// written after keeps exactly three. This runs *before* the scheduler is built
+// from the herd, so the bots join the rotation and are driven by the sim like
+// every other resident.
+ensureHouseResidents(world);
+
 const brain = createBrain();
 const scheduler = createScheduler(world.herd.map((h) => h.id));
-
 const app: import("express").Express = express();
 app.use(cors());
 app.use(express.json({ limit: "64kb" }));
@@ -325,6 +335,26 @@ function startScheduler(): void {
       world.editions.unshift(edition);
       if (world.editions.length > 20) world.editions.length = 20;
       broadcast({ type: "edition", edition });
+    }
+
+    // Hermes Trials (08 §4.1): one sampler per turn, the *only* integration
+    // point between the sim and contest resolution.
+    //
+    // It sits here rather than in its own interval because a contest is scored
+    // over the turns that actually happened — sampling on a clock the sim does
+    // not share would measure the scheduler instead of the town. It is reached
+    // only when a resident was driven and produced an order, which is safe for
+    // `endure` because spits can only originate inside a turn, so a skipped
+    // tick cannot swallow one. Entrants all scale together, so an uneven number
+    // of samples cannot distort the ranking either.
+    //
+    // The three house bots are what stops `pickNextSimId` returning null on a
+    // quiet town, which would otherwise pause sampling entirely.
+    const tournament = tickTournament(world, Date.now(), result.spit ? [result.spit.to] : []);
+    if (tournament) broadcast(tournament);
+    for (const dropped of retireResolved(world, Date.now())) {
+      const retired: TournamentEvent = { type: "contest", reason: "retired", contestId: dropped };
+      broadcast(retired);
     }
 
     // debounced save for routine ticks
