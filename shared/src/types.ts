@@ -111,6 +111,97 @@ export interface Quest {
   completedAt?: number;
 }
 
+/**
+ * Hermes Trials — one contest objective (08 §4.2).
+ *
+ * Every kind resolves from data the sim already produces; none of them
+ * require the outcome layer that `win_argument` would need (08 §3).
+ */
+export type ContestKind = "gather_at" | "hold_ground" | "tend_project" | "endure";
+
+/** Lifecycle: announced → live → resolved (08 §10.1). */
+export type ContestState = "announced" | "live" | "resolved";
+
+/**
+ * One row per contestant per live tick — the evidence trail (08 §4.1).
+ *
+ * `place` is `mind.doing.place`, so a contestant that stopped being simulated
+ * simply stops producing samples and is judged on what it did show up for.
+ * A contestant with no samples at all does not count as standing.
+ */
+export interface ContestSample {
+  /** wall-clock ms of the tick that produced this row */
+  t: number;
+  agentId: string;
+  place: string;
+  spirits: number;
+  /** this contestant was hit by a spit during this tick (drives `endure`) */
+  wasSpit: boolean;
+}
+
+export interface ContestStanding {
+  /** resident id of the contestant */
+  agentId: string;
+  /** rank points: 1st 10, 2nd 5, 3rd 1, rest 0 (08 §4.3). 0 when void. */
+  score: number;
+  /** 1-based; kept even when the result is void, because that is what the win
+   * is narrated from ("won by forfeit") — only the points are zeroed. */
+  rank: number;
+  /** objective-specific metric, higher is better */
+  metric: number;
+  /** human-readable evidence, rendered by the HUD and the Daily Spit */
+  detail: string;
+}
+
+export interface ContestResult {
+  standings: ContestStanding[];
+  /**
+   * True when a single contestant (or none) was still standing at the end —
+   * the win is narrated but awards no season points (D7, 08 §4.3).
+   */
+  voidResult: boolean;
+  resolvedAt: number;
+}
+
+export interface Contest {
+  id: string;
+  kind: ContestKind;
+  /** headline; always "THE HALL ARGUMENT" in v1 — see 08 §3 */
+  title: string;
+  /** target location id for `gather_at` / `hold_ground` / `tend_project` */
+  place: string;
+  startsAt: number;
+  endsAt: number;
+  state: ContestState;
+  /** contestant resident ids — external agents only (D1); never residents. */
+  entrants: string[];
+  /** the single house agent in this contest, if any (D8: at most one) */
+  houseEntrant?: string;
+  /** capped evidence trail (08 §11: trimmed on persist) */
+  samples: ContestSample[];
+  result?: ContestResult;
+  /** matchup framing derived from relationships (08 §7.1). Cosmetic only. */
+  narration: string;
+}
+
+export interface SeasonStanding {
+  agentId: string;
+  points: number;
+  wins: number;
+  losses: number;
+}
+
+export interface Season {
+  id: string;
+  /** 1-based season number; the unit of the return cadence (08 §6) */
+  no: number;
+  startedAt: number;
+  /** trials (10 days) → semifinals (top 4) → final → champion (08 §5) */
+  state: "trials" | "semifinals" | "final" | "closed";
+  standings: SeasonStanding[];
+  champion?: string;
+}
+
 export interface TownSnapshot {
   now: number;
   config: TownConfig;
@@ -123,6 +214,13 @@ export interface TownSnapshot {
   quests: Quest[];
   /** external agent registry (optional — older saves without it stay valid) */
   agents?: AgentRecord[];
+  /**
+   * Hermes Trials contests (08 §11). Optional — older saves have none and
+   * the contest HUD must stay unmounted rather than guess at an empty state.
+   */
+  contests?: Contest[];
+  /** current tournament season standings (08 §5) */
+  season?: Season;
 }
 
 export interface TownConfig {
