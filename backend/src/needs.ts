@@ -54,8 +54,4 @@ export function isNight(clock: number): boolean {
   return clock > 0.72;
 }
 
-export function dayClock(dateMs = Date.now(), dayLengthSec = 900): number {
-  // dayLength 900 sec = 15 min realtime = 1 day
-  const sec = (dateMs / 1000) % dayLengthSec;
-  return sec / dayLengthSec;
-}
+export { dayClock } from "@hermesbook/shared";

@@ -1,7 +1,7 @@
 import { V, WorldWidth, WorldHeight } from "./constants.js";
 import { LOCATIONS } from "./locationsData.js";
 import { pf } from "./pf.js";
-import { Hc } from "@hermesbook/shared";
+import { DAY_LENGTH_SEC, Hc } from "@hermesbook/shared";
 import { renderLlama } from "./renderer/draw.js";
 import { sf } from "./renderer/skeleton.js";
 import { BUF_W, BUF_H } from "./renderer/pixelBuffer.js";
@@ -62,7 +62,7 @@ function hashId(id: string): number {
 export class Xf {
   cam = { x: CAM_HOME_X, y: CAM_HOME_Y, tx: CAM_HOME_X, ty: CAM_HOME_Y, zoom: 1, tz: 1 };
   clock = 0; // 0..1
-  dayLength = 900;
+  dayLength = DAY_LENGTH_SEC;
   byId = new Map<string, AgentSprite>();
   puffs: Puff[] = [];
   bubbles: SpeechBubble[] = [];

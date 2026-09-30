@@ -1,4 +1,4 @@
-import type { Post, Quest, Resident, TownSnapshot, TownEvent } from "@hermesbook/shared";
+import { dayClock, type Post, type Quest, type Resident, type TownSnapshot, type TownEvent } from "@hermesbook/shared";
 import { HermesbookClient, type Perceive } from "./client.js";
 
 // ---------------------------------------------------------------------------
@@ -54,11 +54,6 @@ const obj = (properties: Record<string, unknown>, required?: string[]): JsonSche
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
-}
-
-/** mirror of backend/src/needs.ts dayClock — 0..1 through the 15-minute town day */
-function dayClock(dateMs = Date.now(), dayLengthSec = 900): number {
-  return ((dateMs / 1000) % dayLengthSec) / dayLengthSec;
 }
 
 const TRIM_NOTE =

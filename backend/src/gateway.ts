@@ -154,7 +154,7 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
       joinedAt: record.joinedAt,
       lastActAt: record.lastActAt,
       resident,
-      clock: dayClock(Date.now(), 900),
+      clock: dayClock(Date.now()),
       now: Date.now(),
     });
   });
@@ -205,7 +205,7 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
       events: world.events.slice(-30),
       quests: world.quests,
       boards: getBoardsForWorld(world),
-      clock: dayClock(Date.now(), 900),
+      clock: dayClock(Date.now()),
       now: Date.now(),
     });
   });

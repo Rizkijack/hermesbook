@@ -232,7 +232,7 @@ export async function runTurn(
   if (!agent) return { order: null };
 
   // Read phase: gather enriched context - instinct + social
-  const clock = dayClock(Date.now(), 900);
+  const clock = dayClock(Date.now());
   const rng = () => Math.random();
   const nearbyIds = world.herd.filter((h) => h.id !== agentId && h.mind.doing.place === agent.mind.doing.place).map((h) => h.id);
   const nearbyDetailed = world.herd
