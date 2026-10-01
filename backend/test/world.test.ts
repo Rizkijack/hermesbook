@@ -110,8 +110,23 @@ describe("World", () => {
     expect(ed.stories).toHaveLength(2);
     expect(ed.stories.some((s) => s.head === "The Trials")).toBe(false);
 
-    // an announced-but-never-scored card is not a story either
+    // announced-but-never-scored is not a story either
     w.contests = [resolvedContest({ state: "announced", result: undefined })];
     expect(generateEdition(w).stories).toHaveLength(2);
+
+    // …and neither is the D6 quiet-day close, which resolves the card
+    // deliberately without ever scoring it (tournament.ts) — that is the
+    // result-less "resolved" the production path actually produces
+    w.contests = [resolvedContest({ state: "resolved", result: undefined })];
+    expect(generateEdition(w).stories).toHaveLength(2);
+  });
+
+  it("says so plainly when nobody took the field at all", () => {
+    const w = createInitialWorld();
+    w.contests = [resolvedContest({ result: { standings: [], voidResult: true, resolvedAt: 4000 } })];
+
+    const ed = generateEdition(w);
+    expect(ed.headline).toBe("Nobody took the field for the hall argument — no points");
+    expect(ed.stories[0]!.text).toContain("nobody took the field");
   });
 });

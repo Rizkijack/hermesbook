@@ -225,8 +225,13 @@ function latestResolvedContest(world: TownSnapshot): Contest | undefined {
 function contestHeadline(world: TownSnapshot, c: Contest): string {
   const result = c.result!;
   const top = result.standings.find((s) => s.rank === 1) ?? result.standings[0];
-  const who = top ? residentName(world, top.agentId) : "Nobody";
   const what = c.title.toLowerCase();
+  // An empty board is a result too: every entrant was already gone when the
+  // window closed, so `voidResult` comes back with no standings at all.
+  // "Nobody won … by forfeit" would read as broken copy in a lead — say the
+  // thing that happened instead.
+  if (!top) return `Nobody took the field for ${what} — no points`;
+  const who = residentName(world, top.agentId);
   if (result.voidResult) return `${who} won ${what} by forfeit — no points`;
   return `${who} wins ${what}`;
 }
