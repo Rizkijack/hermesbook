@@ -13,6 +13,21 @@ export const MAX_ZOOM = 2.8;
 const CAM_HOME_X = 1600;
 const CAM_HOME_Y = 900;
 
+/** 08 §10.2 — name-tag / ring colour by finishing rank: 1st, 2nd, 3rd. */
+export const RANK_COLORS = ["#c9a86a", "#b9c0c4", "#b87333"] as const;
+/** Entrants before a result exists — everyone competing gets the same mark. */
+export const ENTRANT_COLOR = "#7a5cc4";
+
+/** The slice of a contest the renderer needs (08 §9, §10.2). */
+export interface ContestMark {
+  state: "announced" | "live" | "resolved";
+  /** venue location id — the glow target and the audience's destination */
+  place: string;
+  entrants: readonly string[];
+  /** entrant id → 1-based rank; empty until the contest resolves */
+  ranks: Readonly<Record<string, number>>;
+}
+
 export interface AgentSprite {
   id: string;
   name: string;
@@ -67,6 +82,8 @@ export class Xf {
   puffs: Puff[] = [];
   bubbles: SpeechBubble[] = [];
   followId: string | null = null;
+  /** current Hermes Trials contest, or null on a quiet day (08 §10.1) */
+  contest: ContestMark | null = null;
   private t = 0;
 
   worldW = WorldWidth;
@@ -112,6 +129,32 @@ export class Xf {
 
   setFollow(id: string | null) {
     this.followId = id;
+  }
+
+  /**
+   * Contest channel (08 §10.2). `null` is the default and the common case: a
+   * town with no contest draws exactly as it did before the Trials existed.
+   */
+  setContest(mark: ContestMark | null) {
+    this.contest = mark;
+  }
+
+  /**
+   * Ring + name-tag colour for a sprite, or null when it is not competing.
+   * While the contest runs every entrant shares one colour; the ranks colour
+   * them separately the moment there is a result to show (08 §10.2).
+   */
+  contestColor(id: string): string | null {
+    const c = this.contest;
+    if (!c || !c.entrants.includes(id)) return null;
+    const rank = c.ranks[id];
+    return c.state === "resolved" && rank ? (RANK_COLORS[rank - 1] ?? ENTRANT_COLOR) : ENTRANT_COLOR;
+  }
+
+  /** Follow mode still wins the tag; a contestant's rank colour comes next. */
+  private tagColor(id: string): string {
+    if (id === this.followId) return "#c9a86a";
+    return this.contestColor(id) ?? "#1b1915";
   }
 
   // ---- camera -------------------------------------------------------------
@@ -294,8 +337,15 @@ export class Xf {
               nx = Math.floor((a.x + Math.cos(ang) * rad) / V);
               ny = Math.floor((a.y + Math.sin(ang) * rad) / V);
             } else if (r < 0.62) {
-              // wander to a random social/civic location spot with jitter
-              const loc = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]!;
+              // 08 §9 — while a contest is live the town walks to the venue.
+              // A bias on the same random pick the residents already make, never
+              // a forced path: they are an audience, not a queued crowd, and the
+              // sim keeps owning where they actually go.
+              const mark = this.contest;
+              const venue = mark && mark.state === "live" && !mark.entrants.includes(a.id)
+                ? LOCATIONS.find((l) => l.id === mark.place)
+                : undefined;
+              const loc = venue && Math.random() < 0.62 ? venue : LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]!;
               nx = loc.spot[0] + Math.floor((Math.random() - 0.5) * 3);
               ny = loc.spot[1] + Math.floor((Math.random() - 0.5) * 3);
               a.targetPlace = loc.id;
@@ -466,6 +516,47 @@ export class Xf {
     if (c < 0.78) return (c - 0.72) / 0.06;
     if (c < 0.88) return 1;
     return Math.max(0, 1 - (c - 0.88) / 0.07);
+  }
+
+  /**
+   * 08 §10.2 — "something is starting", told by the world rather than by an
+   * overlay: the venue carries a warm pool of light and a dashed outline of
+   * the exact spot. An announcement lights the hall and the notice board too,
+   * so the call still reads when the venue itself is a pond off to one side.
+   */
+  private drawVenueGlow(ctx: CanvasRenderingContext2D): void {
+    const mark = this.contest!;
+    const pulse = 0.5 + 0.5 * Math.sin(this.t * 3.1);
+    const colour: [number, number, number] = mark.state === "resolved" ? [150, 190, 255] : [255, 205, 110];
+    const alpha = mark.state === "live" ? 0.4 : mark.state === "announced" ? 0.28 : 0.16;
+    if (mark.state === "announced") {
+      this.glowAt(ctx, "hall", colour, alpha * 0.8, pulse);
+      this.glowAt(ctx, "board", colour, alpha * 0.8, pulse);
+    }
+    this.glowAt(ctx, mark.place, colour, alpha, pulse);
+  }
+
+  private glowAt(ctx: CanvasRenderingContext2D, locId: string, colour: [number, number, number], alpha: number, pulse: number): void {
+    const loc = LOCATIONS.find((l) => l.id === locId);
+    if (!loc) return;
+    const cx = (loc.x + loc.w / 2) * V;
+    const cy = (loc.y + loc.h / 2) * V;
+    const r = Math.max(loc.w, loc.h) * V * 0.7 + 46;
+    const a = alpha * (0.75 + 0.25 * pulse);
+    const [cr, cg, cb] = colour;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
+    grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    // dashed footprint: the pool says "somewhere here", this says exactly where
+    ctx.strokeStyle = `rgba(${cr},${cg},${cb},${Math.min(0.95, a * 2)})`;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([11, 7]);
+    ctx.strokeRect(loc.x * V - 5, loc.y * V - 5, loc.w * V + 10, loc.h * V + 10);
+    ctx.setLineDash([]);
   }
 
   draw(ctx: CanvasRenderingContext2D, viewportW: number, viewportH: number): void {
@@ -766,6 +857,21 @@ export class Xf {
           ctx.ellipse(a.x, a.y + 6, 14 * scale * 0.6, 5 * scale * 0.5, 0, 0, Math.PI * 2);
           ctx.fill();
 
+          // 08 §10.2 — a coloured ring under every contestant, so the roster is
+          // readable off the ground plane even when the name tags overlap
+          const ringCol = this.contestColor(a.id);
+          if (ringCol) {
+            ctx.strokeStyle = ringCol;
+            ctx.lineWidth = 2.2;
+            ctx.globalAlpha = this.contest?.state === "live"
+              ? 0.7 + 0.3 * Math.sin(this.t * 5 + hashId(a.id) * 0.01)
+              : 0.9;
+            ctx.beginPath();
+            ctx.ellipse(a.x, a.y + 7, 17, 6.5, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+
           ctx.save();
           ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
           const sx = (a.x - cam.x) * cam.zoom + viewportW / 2;
@@ -778,7 +884,7 @@ export class Xf {
           ctx.strokeStyle = "#1b1915";
           ctx.lineWidth = 0.5;
           ctx.strokeRect(sx - labelBgW / 2, sy - 14, labelBgW, 14);
-          ctx.fillStyle = a.id === this.followId ? "#c9a86a" : "#1b1915";
+          ctx.fillStyle = this.tagColor(a.id);
           ctx.fillText(a.name, sx, sy - 4);
           ctx.restore();
         },
@@ -787,6 +893,10 @@ export class Xf {
 
     queue.sort((a, b) => a.y - b.y);
     for (const q of queue) q.draw();
+
+    // 08 §10.2 — diegetic announcement: the venue lights up so the town knows
+    // where to look before any overlay appears
+    if (this.contest) this.drawVenueGlow(ctx);
 
     for (const p of this.puffs) {
       ctx.beginPath();

@@ -1,13 +1,158 @@
-import { useEffect, useRef } from "react";
-import { Xf } from "./engine.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Xf, RANK_COLORS, ENTRANT_COLOR, type ContestMark } from "./engine.js";
+import { LOCATIONS } from "./locationsData.js";
+import { parseHash } from "../router/hash.js";
+import { CONTEST, type Contest, type ContestState } from "@hermesbook/shared";
 
 const DRAG_CLICK_SLOP = 5; // px of pointer travel still counted as a click
+
+export type ContestPhase = "idle" | "announced" | "live" | "resolved";
+
+/**
+ * 08 §10.1 — the HUD state machine. `idle` renders nothing at all: the town is
+ * allowed to be quiet, and the result card is the only phase with a clock
+ * attached to it (CONTEST.resultCardMs, ~45s, then the Daily Spit cites it).
+ */
+export function contestPhase(contest: Contest | undefined, now: number): ContestPhase {
+  if (!contest) return "idle";
+  if (contest.state !== "resolved") return contest.state;
+  return now < (contest.result?.resolvedAt ?? 0) + CONTEST.resultCardMs ? "resolved" : "idle";
+}
+
+/**
+ * Which contest this canvas is about. The route wins (`#/contest/:id`, 08 §10.3
+ * — the permalink forces its own overlay), otherwise the most urgent window:
+ * live beats announced, and only a result card that is still within its 45s
+ * window beats silence. Days with no contest simply return undefined.
+ */
+export function pickContest(contests: Contest[] | undefined, forcedId: string | null, now: number): Contest | undefined {
+  if (!contests || contests.length === 0) return undefined;
+  if (forcedId) return contests.find((c) => c.id === forcedId);
+  const inState = (s: ContestState) => contests.find((c) => c.state === s);
+  return inState("live")
+    ?? inState("announced")
+    ?? [...contests].reverse().find((c) => contestPhase(c, now) === "resolved");
+}
+
+export interface StandingRow {
+  agentId: string;
+  name: string;
+  metric: number;
+}
+
+/**
+ * Provisional standings while the contest runs: how many ticks each entrant
+ * spent at the venue, straight off the evidence trail. The resolver's numbers
+ * replace this the moment there is a result — this is a scoreboard, not a
+ * verdict (08 §4.1).
+ */
+export function liveStandings(contest: Contest, herd: Array<{ id: string; name: string }>): StandingRow[] {
+  const nameOf = (id: string) => herd.find((h) => h.id === id)?.name ?? id.slice(0, 8);
+  return contest.entrants
+    .map((agentId) => ({
+      agentId,
+      name: nameOf(agentId),
+      metric: contest.samples.reduce((n, s) => n + (s.agentId === agentId && s.place === contest.place ? 1 : 0), 0),
+    }))
+    .sort((a, b) => b.metric - a.metric || a.name.localeCompare(b.name));
+}
+
+/** 08 §10.3 — `#/contest/:id` selects the contest this canvas forces on. */
+function routeContestId(): string | null {
+  if (typeof location === "undefined") return null;
+  const route = parseHash(location.hash);
+  return route.page === "contest" ? (route.arg ?? null) : null;
+}
+
+function mmss(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * The thin bar (08 §10.1). It sits 48px below the top edge so the canvas keeps
+ * its `Reset` / `Free Cam` buttons (top-right) and its drag hint (bottom-left)
+ * exactly where they were — see 08 §10.4; the buttons are never moved.
+ */
+function ContestHud({ contest, phase, herd, now }: {
+  contest: Contest;
+  phase: ContestPhase;
+  herd: Array<{ id: string; name: string }>;
+  now: number;
+}) {
+  const nameOf = (id: string) => herd.find((h) => h.id === id)?.name ?? id.slice(0, 8);
+  const venue = LOCATIONS.find((l) => l.id === contest.place)?.name.replace("The ", "") ?? contest.place;
+  const standings = liveStandings(contest, herd);
+  const label = phase === "announced" ? "STARTING" : phase === "live" ? "● LIVE" : "RESULT";
+
+  return (
+    <div
+      data-testid="contest-hud"
+      data-phase={phase}
+      data-contest-id={contest.id}
+      style={{
+        position: "absolute", top: 48, left: 8, right: 8,
+        display: "flex", alignItems: "center", gap: 12, padding: "6px 10px",
+        overflow: "hidden", whiteSpace: "nowrap",
+        background: "rgba(244,241,234,0.94)", border: "1px solid #1b1915",
+        fontFamily: "JetBrains Mono", fontSize: 11, color: "#1b1915",
+        boxShadow: "0 2px 0 rgba(27,25,21,0.16)",
+      }}
+    >
+      <span style={{ fontSize: 9, letterSpacing: "0.16em", color: phase === "live" ? ENTRANT_COLOR : "#8a8578" }}>{label}</span>
+      <strong data-testid="contest-title" style={{ fontFamily: "Instrument Serif", fontSize: 16, fontWeight: 400 }}>{contest.title}</strong>
+      <span style={{ fontSize: 10, color: "#6f6a61" }}>@ {venue}</span>
+
+      {phase === "announced" && (
+        <>
+          <span data-testid="contest-countdown">starts in {Math.max(0, Math.ceil((contest.startsAt - now) / 1000))}s</span>
+          <span data-testid="contest-entrants" style={{ display: "inline-flex", gap: 8 }}>
+            {contest.entrants.map((id) => (
+              <span key={id} data-testid="hud-entrant" style={{ color: ENTRANT_COLOR }}>◆ {nameOf(id)}</span>
+            ))}
+          </span>
+        </>
+      )}
+
+      {phase === "live" && (
+        <>
+          <span data-testid="contest-timer" style={{ fontWeight: 700 }}>{mmss(contest.endsAt - now)} left</span>
+          <span data-testid="contest-standings" style={{ display: "inline-flex", gap: 10 }}>
+            {standings.slice(0, 3).map((row, i) => (
+              <span key={row.agentId} data-testid="hud-standing-row">
+                <span style={{ color: RANK_COLORS[i] ?? ENTRANT_COLOR }}>{i + 1}.</span> {row.name} <b>{row.metric}</b>
+              </span>
+            ))}
+          </span>
+        </>
+      )}
+
+      {phase === "resolved" && (
+        <span data-testid="contest-result">
+          {contest.result
+            ? contest.result.voidResult
+              ? "no points — one contestant standing"
+              : `${nameOf(contest.result.standings.find((s) => s.rank === 1)?.agentId ?? "")} wins`
+            : "awaiting the result"}
+          {contest.result && (
+            <span style={{ color: "#6f6a61", marginLeft: 8 }}>
+              {contest.result.standings.slice(0, 3).map((s) => `${s.rank}. ${nameOf(s.agentId)}`).join("  ")}
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function WorldCanvas({
   snapshot,
   onPick,
 }: {
-  snapshot: { herd: Array<{ id: string; name: string; handle: string; genes: string; mind: { doing: { place: string; act: string } }; born: number }>; };
+  snapshot: {
+    herd: Array<{ id: string; name: string; handle: string; genes: string; mind: { doing: { place: string; act: string } }; born: number }>;
+    contests?: Contest[];
+  };
   onPick?: (id: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -16,6 +161,44 @@ export function WorldCanvas({
   // snapshot push can never rebuild (and re-centre) the camera.
   const initialRef = useRef(snapshot);
   const onPickRef = useRef(onPick);
+
+  // --- contest channel (08 §10.1 / §10.3) ---------------------------------
+  // The route forces a specific contest; everywhere else the HUD follows the
+  // most urgent window in the snapshot, and a day with no contest stays idle.
+  const [forcedId, setForcedId] = useState<string | null>(() => routeContestId());
+  useEffect(() => {
+    const onHash = () => setForcedId(routeContestId());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // a countdown and the 45s result card need a clock — but only while there is
+  // something to time, so a quiet day ticks nothing at all
+  const [now, setNow] = useState(() => Date.now());
+  const timed = (snapshot.contests?.length ?? 0) > 0;
+  useEffect(() => {
+    if (!timed) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [timed]);
+
+  const contest = useMemo(
+    () => pickContest(snapshot.contests, forcedId, now),
+    [snapshot.contests, forcedId, now],
+  );
+  const phase = contestPhase(contest, now);
+  const mark = useMemo<ContestMark | null>(
+    () =>
+      contest && phase !== "idle"
+        ? {
+            state: contest.state,
+            place: contest.place,
+            entrants: contest.entrants,
+            ranks: Object.fromEntries((contest.result?.standings ?? []).map((s) => [s.agentId, s.rank])),
+          }
+        : null,
+    [contest, phase],
+  );
 
   useEffect(() => {
     onPickRef.current = onPick;
@@ -210,6 +393,13 @@ export function WorldCanvas({
     };
   }, []);
 
+  // Push the contest channel into the engine (08 §10.2 — the ring, the tag
+  // colour, the venue glow and the audience nudge all read it from there).
+  // Declared after the mount effect, so xfRef is populated by the time it runs.
+  useEffect(() => {
+    xfRef.current?.setContest(mark);
+  }, [mark]);
+
   // Keep xf in sync when the herd changes (new forks, residents leaving).
   // The engine is built once on mount, so this both adds and removes.
   useEffect(() => {
@@ -283,6 +473,10 @@ export function WorldCanvas({
       <div className="mono" style={{ position: "absolute", bottom: 8, left: 8, background: "rgba(244,241,234,0.92)", border: "1px solid #1b1915", padding: "4px 8px", fontSize: 11 }}>
         Drag to pan · scroll/pinch to zoom at cursor · click a resident to follow · arrows to pan · 0 to reset
       </div>
+      {/* 08 §10.1 — transient bar; nothing at all on a quiet day */}
+      {phase !== "idle" && contest && (
+        <ContestHud contest={contest} phase={phase} herd={snapshot.herd} now={now} />
+      )}
     </div>
   );
 }
