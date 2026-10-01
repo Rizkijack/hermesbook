@@ -91,7 +91,7 @@ export function ForkView({ snapshot, preset, onForked }: { snapshot: TownSnapsho
         </div>
         <div className="mono muted" style={{ fontSize: 11, marginTop: 12 }}>Type a name to see hue shift, cut/eyes/extra mutate live. Same name = same child (seeded).</div>
         <div style={{ marginTop: 12, textAlign: "left", background: "#f4f1ea", padding: 10, borderRadius: 4, fontSize: 12, lineHeight: 1.5 }}>
-          <strong>How it works:</strong> child inherits parent DNA with hue shift ±14–40°, 40% hair, 30% eyes, 45% accessory, build/neck drift ±0.125. Gen capped at 9. String 9-segmen: <span className="mono" style={{ fontSize: 10 }}>wool.cut.ears.eyes.extra.hue.build.neck.gen</span>
+          <strong>How it works:</strong> child inherits parent DNA with hue shift ±14–40°, 40% hair, 30% eyes, 45% accessory, build/neck drift ±0.125. Gen capped at 9. String 9-segment: <span className="mono" style={{ fontSize: 10 }}>wool.cut.ears.eyes.extra.hue.build.neck.gen</span>
         </div>
       </div>
     </div>

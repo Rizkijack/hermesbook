@@ -49,33 +49,33 @@ const TEMPLATES = [
 ];
 
 const CONVERSATION_STARTERS = [
-  "{name}, {obsession} masih belum beres ya?",
-  "eh {name}, tadi liat {obsession} di {place}?",
+  "{name}, {obsession} still not sorted, huh?",
+  "hey {name}, see {obsession} at {place} earlier?",
   "{name} — the {obsession} is getting worse",
   "you were at {place}, right {name}? saw the whole thing",
   "still thinking about {obsession} since this morning",
   "{name} owes me an answer about the fence",
   "heard {name} talking about {obsession} at the tavern",
   "the {obsession} — nobody wants to talk about it, but we should",
-  "jujur aja {name}, south meadow memang beda rasanya hari ini",
-  "ketemu {name} di {place}, ngobrolin {obsession} lagi",
+  "honest talk {name}, south meadow does taste different today",
+  "ran into {name} at {place}, talking {obsession} again",
 ];
 
 const REPLY_TEMPLATES = [
-  "iya {name}, aku juga mikir gitu soal {obsession}",
-  "nggak setuju {name}, {place} bukan tempatnya",
+  "yeah {name}, I think so too about {obsession}",
+  "don't agree {name}, {place} is not the spot",
   "hah {name}? the {obsession} again?",
-  "betul {name}, tapi apa hubungannya sama {place}?",
+  "fair {name}, but what does that have to do with {place}?",
   "{name}, you said that at the square and it didn't help",
-  "setuju sama {name} — {obsession} is the real problem",
+  "agree with {name} — {obsession} is the real problem",
   "ah {name}, you always bring up {obsession}",
-  "dengerin {name} di {place} tadi, ada benernya juga",
+  "listen to {name} at {place} earlier, had a point too",
 ];
 
 const WANDER_THOUGHTS = [
-  "jalan-jalan dulu, siapa tau ada berita",
-  "iseng ke {place}, siapa tau ketemu {name}",
-  "gabut — ke {place} aja",
+  "take a stroll first, maybe there is news",
+  "wandering over to {place}, might run into {name}",
+  "bored — just heading to {place}",
   "need to clear my head, heading to {place}",
   "meadow calls, even the sour one",
   "pond south side? curious",
@@ -243,7 +243,7 @@ export function decide(ctx: DecideContext): Decision {
 
   // 6. Free movement / wander instinct — THE CORE OF "ALWAYS MOVING"
   // If no urgent need, bots should wander, explore, work with movement, or chat stroll
-  // This ensures bots tidak diam di satu lokasi
+  // This ensures bots do not stay idle in one location
   const inquisitiveBonus = traitHas(traits, "inquisitive") ? 0.18 : 0;
   const wanderChance = 0.42 + inquisitiveBonus + (spirits > 0.3 ? 0.1 : 0);
   if (rng() < wanderChance) {
@@ -276,11 +276,11 @@ export function decide(ctx: DecideContext): Decision {
 
     const g = generateSpeech(ctx, act, place);
     const reasons = [
-      "jalan-jalan, need to see what's happening",
+      "out for a walk, need to see what's happening",
       "instinct to move, staying still feels wrong",
       "wandering — town is too quiet",
       `heading to ${place}, curiosity`,
-      "cari angin, siapa tau ada cerita",
+      "catching some air, maybe there is a story",
     ];
     return { act, place, reason: pick(reasons, rng), speech: g.text, targetId: g.targetId };
   }

@@ -80,9 +80,9 @@ export default function App() {
           <Link to="docs" className={page === "docs" ? "active" : ""}>Docs</Link>
         </nav>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <button className="theme-toggle" onClick={toggle} aria-label={`Aktifkan mode ${isDark ? "terang" : "gelap"}`} title={`Tema: ${theme} — klik untuk ganti`}>
+          <button className="theme-toggle" onClick={toggle} aria-label={`Switch to ${isDark ? "light" : "dark"} mode`} title={`Theme: ${theme} — click to toggle`}>
             <span className="dot" aria-hidden />
-            <span>{isDark ? "Gelap" : "Terang"}</span>
+            <span>{isDark ? "Light" : "Dark"}</span>
           </button>
           <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{state.herd.length}/{state.config.maxHerd} · {state.feed.length} posts · {state.config.ticker}</div>
         </div>

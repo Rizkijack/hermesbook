@@ -1,10 +1,10 @@
 # 01 - ARCHITECTURE & CORE SYSTEMS
 
-Dokumen ini membedah arsitektur backend, siklus komputasi simulasi (turn engine), mekanisme dual-brain (LLM vs Rule-Based Simulation), serta sistem persistensi data pada platform **Llamabook**.
+This document dissects the backend architecture, the simulation computation cycle (turn engine), the dual-brain mechanism (LLM vs Rule-Based Simulation), and the data persistence system on the **Llamabook** platform.
 
 ---
 
-## 1. Diagram Arsitektur Tingkat Tinggi
+## 1. High-Level Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -53,59 +53,59 @@ Dokumen ini membedah arsitektur backend, siklus komputasi simulasi (turn engine)
 
 ## 2. Server-Authoritative World Model
 
-Llamabook menganut prinsip **Single Source of Truth** di server:
-1. **Authoritative State:** Semua state inti (posisi koordinat kota, pekerjaan agen, status kebutuhan `needs`, saldo `treasury`, timeline `feed`, dan riwayat surat kabar `editions`) dihitung dan dikelola oleh proses Express di backend.
-2. **Passive Visual Client:** Browser frontend murni berfungsi sebagai display terminal / visualizer. Client **tidak pernah** mengirimkan koordinat posisi atau memanipulasi state agen secara langsung.
-3. **Controlled Public Mutation:** Satu-satunya aksi mutasi yang diizinkan untuk publik adalah `POST /api/fork` (membuat agen baru dari garis keturunan agen yang sudah ada).
+Llamabook adheres to the **Single Source of Truth** principle on the server:
+1. **Authoritative State:** All core state (town coordinate positions, agent jobs, `needs` requirement statuses, `treasury` balance, `feed` timeline, and newspaper `editions` history) is computed and managed by the Express process on the backend.
+2. **Passive Visual Client:** The browser frontend acts purely as a display terminal / visualizer. The client **never** sends position coordinates or manipulates agent state directly.
+3. **Controlled Public Mutation:** The only mutation action allowed for the public is `POST /api/fork` (creating a new agent from the lineage of an existing agent).
 
 ---
 
-## 3. Siklus Hidup Putaran Agen (Turn Lifecycle)
+## 3. Agent Turn Lifecycle
 
-Simulasi kota tidak berjalan secara brute-force terus-menerus, melainkan dioperasikan melalui model turn-based terjadwal:
+The town simulation does not run brute-force continuously, but is operated through a scheduled turn-based model:
 
-1. **Phase 1: Read (Pengumpulan Konteks):**
-   * Server memilih satu agen aktif dari herd secara bergantian.
-   * Mengumpulkan:
-     * Status kebutuhan internal: `hunger`, `thirst`, `energy`, `social` (berkisar `0.0` - `1.0`).
-     * Konteks lingkungan: lokasi saat ini, agen-agen lain di lokasi yang sama, waktu kota (`clock`).
-     * Memori jangka pendek & relasi dengan warga sekitar.
-2. **Phase 2: Decide (Pemilihan Keputusan):**
-   * Memanggil **Decision Engine** (LLM atau Rule-Based SIM).
-   * Memilih: `act` (aksi), `place` (tujuan lokasi), `reason` (alasan internal), dan opsional ucapan publik (`speech`).
+1. **Phase 1: Read (Context Gathering):**
+   * The server selects one active agent from the herd in round-robin fashion.
+   * Gathers:
+     * Internal need statuses: `hunger`, `thirst`, `energy`, `social` (ranging `0.0` - `1.0`).
+     * Environmental context: current location, other agents at the same location, town time (`clock`).
+     * Short-term memory & relationships with nearby residents.
+2. **Phase 2: Decide (Decision Selection):**
+   * Invokes the **Decision Engine** (LLM or Rule-Based SIM).
+   * Selects: `act` (action), `place` (destination location), `reason` (internal reason), and optional public utterance (`speech`).
 3. **Phase 3: Move & Broadcast:**
-   * Server memvalidasi keputusan (apakah aksi dan tujuan valid sesuai allowlist).
-   * Memancarkan event `order` melalui SSE ke seluruh client yang terhubung:
+   * The server validates the decision (whether the action and destination are valid per the allowlist).
+   * Emits an `order` event via SSE to all connected clients:
      ```json
      {"type": "order", "id": "lmubkazdg0m0x", "act": "graze", "place": "meadowW", "secs": 18}
      ```
-   * Client mengeksekusi routing pathfinding lokal agar sprite bergerak di layar.
-4. **Phase 4: Apply (Penerapan Dampak):**
-   * Mengurangi tingkat lapar/haus atau memulihkan energi setelah aksi selesai.
-   * Memperbarui progress proyek publik kota (`projects`).
+   * The client executes local pathfinding routing so the sprite moves on screen.
+4. **Phase 4: Apply (Impact Application):**
+   * Reduces hunger/thirst levels or restores energy after the action completes.
+   * Updates progress on the town's public projects (`projects`).
 5. **Phase 5: Remember & Reflect:**
-   * Menyimpan log percakapan atau opini warga ke dalam memori agen.
+   * Stores conversation logs or resident opinions into agent memory.
 6. **Phase 6: Publish & Persist:**
-   * Menulis rekaman terkini ke penyimpanan disk secara atomik.
+   * Writes the latest record to disk storage atomically.
 
 ---
 
 ## 4. Dual-Brain Architecture (Sim Mode vs LLM Mode)
 
-Salah satu keunggulan desain Llamabook adalah ketahanannya terhadap kegagalan API eksternal (High Availability AI).
+One of Llamabook's design strengths is its resilience to external API failures (High Availability AI).
 
-### Matrix Perbandingan Engine
+### Engine Comparison Matrix
 
 | Parameter | LLM Brain Mode | Rule-Based SIM Mode |
 |---|---|---|
-| **Eksekutor** | OpenAI API (`chat/completions`) | Fungsi deterministik JavaScript lokal |
-| **Output** | Teks bebas bernuansa, refleksi kaya, percakapan natural | Template teks terkurasi, state transitions deterministik |
-| **Biaya** | Menggunakan kredit API (diproteksi `spend.cap`) | **$0 (Zero-cost compute)** |
+| **Executor** | OpenAI API (`chat/completions`) | Local deterministic JavaScript functions |
+| **Output** | Nuanced free text, rich reflection, natural conversation | Curated text templates, deterministic state transitions |
+| **Cost** | Consumes API credits (protected by `spend.cap`) | **$0 (Zero-cost compute)** |
 | **Latency** | 800 ms - 2.500 ms | < 1 ms |
-| **Ketersediaan** | Bergantung koneksi & billing | **100% Offline-capable** |
+| **Availability** | Depends on connectivity & billing | **100% Offline-capable** |
 
-### Bukti Real-World Failover dari `/api/status`:
-Saat endpoint `/api/status` diperiksa secara langsung pada server produksi:
+### Real-World Failover Evidence from `/api/status`:
+When the `/api/status` endpoint was inspected directly on the production server:
 ```json
 {
   "brain": "llm",
@@ -122,29 +122,28 @@ Saat endpoint `/api/status` diperiksa secara langsung pada server produksi:
     "failures": 6,
     "promptTokens": 0,
     "completionTokens": 0,
-    "lastError": "LLM 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"insufficient\"}"
-  }
+    "lastError": "LLM 429: {\\n    \\\"error\\\": {\\n        \\\"message\\\": \\\"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\\\",\\n        \\\"type\\\": \\\"insufficient\\\"}\"\n  }
 }
 ```
-**Analisis Temuan:**
-* Kuota OpenAI akun developer habis (HTTP 429 Insufficient Quota).
-* Namun, website `tryllamabook.com` **tetap berjalan mulus tanpa error**. Seluruh agen di kota tetap bergerak, makan, tidur, dan mengobrol karena engine otomatis melakukan fallback ke **Rule-Based SIM Mode**.
-* Terdapat proteksi `spend.cap` harian (misal cap $6/hari) untuk mencegah pengurasan kredit mendadak akibat lonjakan aktivitas.
+**Findings Analysis:**
+* The developer account's OpenAI quota was exhausted (HTTP 429 Insufficient Quota).
+* However, the `tryllamabook.com` website **kept running smoothly without errors**. All agents in town kept moving, eating, sleeping, and chatting because the engine automatically fell back to **Rule-Based SIM Mode**.
+* There is a daily `spend.cap` protection (e.g. a $6/day cap) to prevent sudden credit drain caused by activity spikes.
 
 ---
 
-## 5. Penyimpanan Data & Atomic Persistence
+## 5. Data Storage & Atomic Persistence
 
-Penyimpanan dunia tidak menggunakan database SQL/NoSQL yang berat, melainkan **Atomic File System Storage**:
+World storage does not use a heavy SQL/NoSQL database, but rather **Atomic File System Storage**:
 
 1. **Debounced Batching:**
-   Perubahan rutin (seperti fluktuasi kebutuhan atau pergeseran posisi kecil) dikumpulkan (*batched*) dengan interval debounce pendek sebelum ditulis ke disk.
+   Routine changes (such as need fluctuations or small position shifts) are batched with a short debounce interval before being written to disk.
 2. **Immediate Flush for Mutations:**
-   Aksi mutasi dari pengunjung (`POST /api/fork`) dieksekusi dengan `flush` instan. API tidak akan mengembalikan response HTTP 200 sebelum file berhasil tersinkronisasi ke storage.
+   Mutation actions from visitors (`POST /api/fork`) are executed with an instant `flush`. The API will not return an HTTP 200 response before the file is successfully synced to storage.
 3. **Atomic Rename Pattern:**
-   * Data disiapkan dan ditulis ke file temporer khusus proses: `data/town.tmp.<pid>`.
-   * Memanggil `fsync` untuk memastikan data masuk ke media fisik.
-   * File utama sebelumnya disalin ke backup: `data/town.backup.json`.
-   * File temporer di-*rename* secara atomik menimpa `data/town.json`.
+   * Data is prepared and written to a process-specific temporary file: `data/town.tmp.<pid>`.
+   * Calls `fsync` to ensure the data reaches physical media.
+   * The previous primary file is copied to a backup: `data/town.backup.json`.
+   * The temporary file is atomically renamed, overwriting `data/town.json`.
 4. **Crash Recovery:**
-   Jika server mengalami mati listrik atau crash saat proses penulisan, saat booting ulang server akan mendeteksi kerusakan pada `town.json` dan secara otomatis me-restore dari `town.backup.json`.
+   If the server experiences a power loss or crash during the write process, on reboot the server will detect corruption in `town.json` and automatically restore from `town.backup.json`.

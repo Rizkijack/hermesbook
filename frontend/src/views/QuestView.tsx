@@ -2,13 +2,13 @@ import type { TownSnapshot, Quest } from "@hermesbook/shared";
 import { useState } from "react";
 
 function diffLabel(expiresAt: number | null): string {
-  if (!expiresAt) return "tanpa batas";
+  if (!expiresAt) return "no expiry";
   const ms = expiresAt - Date.now();
-  if (ms <= 0) return "kedaluwarsa";
+  if (ms <= 0) return "expired";
   const h = Math.floor(ms / 3600000);
-  if (h < 1) return `${Math.floor(ms / 60000)}m lagi`;
-  if (h < 24) return `${h}j lagi`;
-  return `${Math.floor(h / 24)}h lagi`;
+  if (h < 1) return `${Math.floor(ms / 60000)}m left`;
+  if (h < 24) return `${h}h left`;
+  return `${Math.floor(h / 24)}d left`;
 }
 
 function QuestCard({ q, onClaim, claiming }: { q: Quest; onClaim: (id: string) => void; claiming?: boolean }) {
@@ -48,15 +48,15 @@ function QuestCard({ q, onClaim, claiming }: { q: Quest; onClaim: (id: string) =
             {q.difficulty} · {q.category}
           </span>
           <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{diffLabel(q.expiresAt)}</span>
-          {isCompleted && <span className="mono" style={{ fontSize: 10, background: "var(--accent)", color: "var(--paper)", padding: "2px 6px", borderRadius: 20 }}>siap klaim</span>}
-          {isClaimed && <span className="mono" style={{ fontSize: 10, background: "var(--hair)", color: "var(--muted)", padding: "2px 6px", borderRadius: 20 }}>selesai</span>}
+          {isCompleted && <span className="mono" style={{ fontSize: 10, background: "var(--accent)", color: "var(--paper)", padding: "2px 6px", borderRadius: 20 }}>ready to claim</span>}
+          {isClaimed && <span className="mono" style={{ fontSize: 10, background: "var(--hair)", color: "var(--muted)", padding: "2px 6px", borderRadius: 20 }}>done</span>}
         </div>
 
         <div style={{ fontFamily: "Instrument Serif", fontSize: 18, lineHeight: 1, marginTop: 10, letterSpacing: "-0.01em" }}>{q.title}</div>
         <div className="mono" style={{ fontSize: 11, lineHeight: 1.5, color: "var(--ink-2)", marginTop: 6 }}>{q.description}</div>
 
         <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-          <span>pemberi {q.giverName}</span>
+          <span>from {q.giverName}</span>
           <span style={{ opacity: 0.4 }}>·</span>
           <span>{q.type}</span>
           {q.targetPlace && <span style={{ opacity: 0.7 }}>→ {q.targetPlace}</span>}
@@ -65,7 +65,7 @@ function QuestCard({ q, onClaim, claiming }: { q: Quest; onClaim: (id: string) =
 
         <div style={{ marginTop: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>progres</span>
+            <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>progress</span>
             <span className="mono" style={{ fontSize: 10, color: isCompleted ? "var(--ink)" : "var(--muted)" }}>
               {q.progress}/{q.required} · {pct}%
             </span>
@@ -94,7 +94,7 @@ function QuestCard({ q, onClaim, claiming }: { q: Quest; onClaim: (id: string) =
             color: "var(--ink-2)",
           }}
         >
-          hadiah: {q.reward.text}
+          reward: {q.reward.text}
         </div>
       </div>
 
@@ -102,11 +102,11 @@ function QuestCard({ q, onClaim, claiming }: { q: Quest; onClaim: (id: string) =
         <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{q.status} · {new Date(q.createdAt).toLocaleDateString()}</span>
         {isCompleted && (
           <button className="btn" style={{ padding: "6px 12px", fontSize: 11 }} onClick={() => onClaim(q.id)} disabled={!!claiming}>
-            {claiming ? "mengklaim..." : "Klaim Hadiah"}
+            {claiming ? "claiming..." : "Claim Reward"}
           </button>
         )}
-        {isActive && <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>otomatis dari aktivitas herd</span>}
-        {isClaimed && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>✓ reward diterapkan</span>}
+        {isActive && <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>auto-filled by herd activity</span>}
+        {isClaimed && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>✓ reward applied</span>}
       </div>
     </div>
   );
@@ -127,12 +127,12 @@ export function QuestView({ snapshot }: { snapshot: TownSnapshot }) {
     try {
       const res = await fetch(`/api/quests/${id}/claim`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "gagal klaim");
-      setMsg(`Berhasil klaim: ${data.title}`);
+      if (!res.ok) throw new Error(data.error || "claim failed");
+      setMsg(`Claimed: ${data.title}`);
       // snapshot will refresh via SSE quest event; also force reload after 800ms
       setTimeout(() => window.location.reload(), 900);
     } catch (e: any) {
-      setMsg(e.message ?? "gagal");
+      setMsg(e.message ?? "failed");
     } finally {
       setClaiming(null);
     }
@@ -147,14 +147,14 @@ export function QuestView({ snapshot }: { snapshot: TownSnapshot }) {
     <div className="stagger">
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--faint)" }}>Papan Quest · Notice Board</div>
-          <div style={{ fontFamily: "Instrument Serif", fontSize: 32, lineHeight: 1, letterSpacing: "-0.02em", marginTop: 6 }}>Quest Harian Kota</div>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--faint)" }}>Quest Board · Notice Board</div>
+          <div style={{ fontFamily: "Instrument Serif", fontSize: 32, lineHeight: 1, letterSpacing: "-0.02em", marginTop: 6 }}>Town Daily Quests</div>
           <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, maxWidth: "60ch" }}>
-            Quest jalan otomatis — setiap gerak, obrolan, dan kerja herd mengisi progres. Tidak perlu klik terima, cukup hidup di kota. Klaim saat siap.
+            Quests run on their own — every move, chat, and chore from the herd fills the progress bar. No accept button, just live in town. Claim when it's ready.
           </div>
         </div>
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: "8px 12px" }} onClick={refresh}>
-          Segarkan Papan
+          Refresh Board
         </button>
       </div>
 
@@ -163,13 +163,13 @@ export function QuestView({ snapshot }: { snapshot: TownSnapshot }) {
       {/* bento: active hero + completed */}
       {active.length === 0 && completed.length === 0 && claimed.length === 0 && (
         <div className="card" style={{ marginTop: 16, textAlign: "center", padding: 24 }}>
-          <div className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>Belum ada quest. Tunggu rotasi harian atau klik Segarkan.</div>
+          <div className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>No quests yet. Wait for the daily rotation or hit Refresh.</div>
         </div>
       )}
 
       {active.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>Aktif · {active.length} quest berjalan otomatis</div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>Active · {active.length} quests running on their own</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
             {active.map((q) => (
               <QuestCard key={q.id} q={q} onClaim={claim} claiming={claiming === q.id} />
@@ -180,8 +180,8 @@ export function QuestView({ snapshot }: { snapshot: TownSnapshot }) {
 
       {completed.length > 0 && (
         <div style={{ marginTop: 22 }}>
-          <div style={{ fontFamily: "Instrument Serif", fontSize: 18, color: "var(--ink)" }}>Siap Klaim · {completed.length}</div>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>Selesaikan, lalu klaim untuk spirit & progress proyek.</div>
+          <div style={{ fontFamily: "Instrument Serif", fontSize: 18, color: "var(--ink)" }}>Ready to Claim · {completed.length}</div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>Finish them, then claim for spirits & project progress.</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
             {completed.map((q) => (
               <QuestCard key={q.id} q={q} onClaim={claim} claiming={claiming === q.id} />
@@ -192,7 +192,7 @@ export function QuestView({ snapshot }: { snapshot: TownSnapshot }) {
 
       {claimed.length > 0 && (
         <div style={{ marginTop: 22 }}>
-          <div className="mono" style={{ fontSize: 11, color: "var(--faint)", marginBottom: 8 }}>Selesai · {claimed.length} diklaim</div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--faint)", marginBottom: 8 }}>Done · {claimed.length} claimed</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12, opacity: 0.9 }}>
             {claimed.slice(0, 6).map((q) => (
               <QuestCard key={q.id} q={q} onClaim={claim} claiming={claiming === q.id} />
@@ -202,9 +202,9 @@ export function QuestView({ snapshot }: { snapshot: TownSnapshot }) {
       )}
 
       <div className="card" style={{ marginTop: 18, background: "color-mix(in srgb, var(--mark) 45%, var(--paper-2) 55%)" }}>
-        <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>Cara kerja</div>
+        <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>How it works</div>
         <div className="mono" style={{ fontSize: 11, lineHeight: 1.6, color: "var(--ink-2)", marginTop: 6 }}>
-          • <strong>visit</strong> = kunjungi lokasi target • <strong>talk</strong> = talk/argue di lokasi • <strong>explore</strong> = kunjungi semua targetPlaces (distinct) • <strong>fetch</strong> = graze di ladang • <strong>work</strong> = kerja • <strong>social</strong> = post/reply di feed. Bot herd yang bergerak otomatis mengisi semua — kamu tinggal klaim.
+          • <strong>visit</strong> = visit the target location • <strong>talk</strong> = talk/argue at a location • <strong>explore</strong> = visit all targetPlaces (distinct) • <strong>fetch</strong> = graze in a field • <strong>work</strong> = work a job • <strong>social</strong> = post/reply in the feed. The bots move on their own and fill every one — you just claim.
         </div>
       </div>
     </div>

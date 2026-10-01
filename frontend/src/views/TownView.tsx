@@ -20,10 +20,10 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
         {/* left hero — HERD */}
         <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: 18, flex: 1 }}>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--faint)" }}>Halaman Tanah {snapshot.config.ticker}</div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--faint)" }}>Town Ground {snapshot.config.ticker}</div>
             <div style={{ fontFamily: "Instrument Serif", fontSize: 28, lineHeight: 1, marginTop: 8, letterSpacing: "-0.02em" }}>
               {snapshot.herd.length} residents
-              <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 18, marginLeft: 8 }}>di lapangan</span>
+              <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 18, marginLeft: 8 }}>in the field</span>
             </div>
             <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -35,16 +35,16 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
             </div>
             <div style={{ marginTop: 14, height: 1, background: "var(--hair)", opacity: 0.7 }} />
             <div className="mono" style={{ fontSize: 11, lineHeight: 1.6, color: "var(--ink-2)", marginTop: 12, maxWidth: "56ch" }}>
-              Tanah 210×128 tiles, 26 rumah dengan arsitektur iklim — Civic batu, Social kayu hangat, Rest bata merah. NPC berkeliaran bebas, insting haus/lapar/sosial.
+              A 210×128-tile map, 26 houses with climate architecture — stone Civic, warm wood Social, red brick Rest. NPCs roam free on thirst/hunger/social instincts.
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderTop: "1px solid var(--hair)", background: "color-mix(in srgb, var(--mark) 55%, var(--paper-2) 45%)" }}>
             <div style={{ padding: "10px 14px", borderRight: "1px solid var(--hair)" }}>
-              <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)" }}>TERITORI</div>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)" }}>TERRITORY</div>
               <div className="mono" style={{ fontSize: 12, marginTop: 4 }}>210×128 · 3360×2048 px</div>
             </div>
             <div style={{ padding: "10px 14px" }}>
-              <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)" }}>CUACA</div>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)" }}>WEATHER</div>
               <div className="mono" style={{ fontSize: 12, marginTop: 4 }}>{snapshot.events.slice(-1)[0]?.text ?? "Clear night, lamps lit early."}</div>
             </div>
           </div>
@@ -55,7 +55,7 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
           <div className="card">
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
               <div style={{ fontFamily: "Instrument Serif", fontSize: 14, color: "var(--ink)" }}>Top spots</div>
-              <div className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{top.length} aktif</div>
+              <div className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{top.length} active</div>
             </div>
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column" }}>
               {top.map(([place, n], i) => (
@@ -82,9 +82,9 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
                   “{p.text}” <span className="mono muted" style={{ fontSize: 10, whiteSpace: "nowrap" }}>— {p.name}</span>
                 </div>
               ))}
-              {snapshot.events.length === 0 && snapshot.feed.length === 0 && <span className="mono muted" style={{ fontSize: 11 }}>sunyi pagi ini</span>}
+              {snapshot.events.length === 0 && snapshot.feed.length === 0 && <span className="mono muted" style={{ fontSize: 11 }}>quiet this morning</span>}
             </div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 10, borderTop: "1px solid var(--hair)", paddingTop: 8 }}>26 rumah 52×58 bot dual-brain</div>
+            <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 10, borderTop: "1px solid var(--hair)", paddingTop: 8 }}>26 houses 52×58 dual-brain bot</div>
           </div>
         </div>
       </div>
@@ -94,10 +94,10 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
         <div className="card" style={{ marginTop: 16, padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--hair)", background: "color-mix(in srgb, var(--mark) 35%, var(--paper-2) 65%)" }}>
             <div className="mono" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--faint)" }}>
-              Papan Quest · {activeQuests.length} aktif {readyQuests.length > 0 ? `· ${readyQuests.length} siap klaim` : ""}
+              Quest Board · {activeQuests.length} active {readyQuests.length > 0 ? `· ${readyQuests.length} ready to claim` : ""}
             </div>
             <Link to="quest" className="mono" style={{ fontSize: 11, color: "var(--ink)", textDecoration: "none", borderBottom: "1px solid var(--ink)", paddingBottom: 1 }}>
-              Buka Papan →
+              Open Board →
             </Link>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, Math.max(activeQuests.length, 1))}, 1fr)`, gap: 0 }}>
@@ -116,7 +116,7 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
             })}
             {activeQuests.length === 0 && readyQuests.length > 0 && (
               <div style={{ padding: "12px 14px" }}>
-                <div className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>{readyQuests[0]!.title} siap diklaim!</div>
+                <div className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>{readyQuests[0]!.title} ready to claim!</div>
                 <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{readyQuests[0]!.reward.text}</div>
               </div>
             )}

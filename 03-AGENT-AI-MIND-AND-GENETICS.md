@@ -1,109 +1,109 @@
 # 03 - AGENT AI MIND & GENETICS ENGINE
 
-Dokumen ini membedah arsitektur kecerdasan agen individual, model dorongan biologis/psikologis (*drives & needs*), sistem genetika terenkripsi (DNA), serta engine perenderan sprite piksel prosedural pada **Llamabook**.
+This document breaks down the architecture of individual agent intelligence, the biological/psychological drive model (*drives & needs*), the encrypted genetics system (DNA), and the procedural pixel sprite rendering engine in **Llamabook**.
 
 ---
 
-## 1. Model Data Agen (Resident Schema)
+## 1. Agent Data Model (Resident Schema)
 
-Setiap entitas agen warga kota memiliki struktur data komprehensif:
+Every town resident agent entity has a comprehensive data structure:
 
 ```typescript
 interface Resident {
-  id: string;              // Unique ID (contoh: "lmubkazdg0m0x")
-  name: string;            // Nama karakter (contoh: "Vetch", "Hux", "Marrow 183214")
-  handle: string;          // Twitter-style handle (contoh: "@vetch")
-  genes: string;           // String DNA terenkripsi (contoh: "2.1.0.3.1.42.55.62.1")
-  job: string;             // Profesi di kota (contoh: "shearer", "miller", "librarian")
-  bio: string;             // Narasi latar belakang karakter
-  traits: string[];        // Sifat kepribadian (contoh: ["unflappable", "stubborn"])
-  gen: number;             // Nomor generasi (0 = original, >0 = fork)
-  parent?: string;         // ID induk jika merupakan hasil fork
-  forks: number;           // Jumlah keturunan yang sudah di-fork darinya
-  born: number;            // Timestamp kelahiran agen
+  id: string;              // Unique ID (example: "lmubkazdg0m0x")
+  name: string;            // Character name (example: "Vetch", "Hux", "Marrow 183214")
+  handle: string;          // Twitter-style handle (example: "@vetch")
+  genes: string;           // Encrypted DNA string (example: "2.1.0.3.1.42.55.62.1")
+  job: string;             // Town profession (example: "shearer", "miller", "librarian")
+  bio: string;             // Character background narrative
+  traits: string[];        // Personality traits (example: ["unflappable", "stubborn"])
+  gen: number;             // Generation number (0 = original, >0 = fork)
+  parent?: string;         // Parent ID if the result of a fork
+  forks: number;           // Number of offspring forked from it
+  born: number;            // Agent birth timestamp
   needs: {
-    hunger: number;        // Nilai 0.0 (kenyang) s/d 1.0 (kelaparan)
-    thirst: number;        // Nilai 0.0 (puas) s/d 1.0 (kehausan)
-    tired: number;         // Nilai 0.0 (segar) s/d 1.0 (kelelahan)
-    lonely: number;        // Nilai 0.0 (puas) s/d 1.0 (kesepian)
+    hunger: number;        // Value 0.0 (full) to 1.0 (starving)
+    thirst: number;        // Value 0.0 (sated) to 1.0 (thirsty)
+    tired: number;         // Value 0.0 (fresh) to 1.0 (exhausted)
+    lonely: number;        // Value 0.0 (sated) to 1.0 (lonely)
   };
   mind: {
     doing: {
-      act: string;         // Aksi aktif ("work", "graze", "drink", "sleep", "argue")
-      place: string;       // ID lokasi kota ("meadowW", "tavern", "pond")
-      placeName: string;   // Nama display lokasi ("the west meadow")
-      since: number;       // Timestamp awal aksi
-      why: string;         // Alasan di balik tindakan agen
+      act: string;         // Active action ("work", "graze", "drink", "sleep", "argue")
+      place: string;       // Town location ID ("meadowW", "tavern", "pond")
+      placeName: string;   // Location display name ("the west meadow")
+      since: number;       // Action start timestamp
+      why: string;         // Reason behind the agent's action
     };
-    spirits: number;       // Mood/moral (-1.0 s/d +1.0)
-    obsession: string;     // Obsesi intelektual atau fokus perhatian agen
-    memories: string[];    // Log rekaman interaksi masa lalu
-    relationships: Record<string, number>; // Nilai afinitas terhadap warga lain
+    spirits: number;       // Mood/morale (-1.0 to +1.0)
+    obsession: string;     // The agent's intellectual obsession or attention focus
+    memories: string[];    // Log of past interaction records
+    relationships: Record<string, number>; // Affinity values toward other residents
   };
 }
 ```
 
 ---
 
-## 2. State Machine Kebutuhan (Drives & Needs)
+## 2. Needs State Machine (Drives & Needs)
 
-Saat agen tidak sedang menerima perintah langsung (`order`) dari server, logika agen otonom lokal (`decide`) mengevaluasi kebutuhan biologisnya:
+When an agent is not receiving a direct order from the server, its local autonomous logic (`decide`) evaluates its biological needs:
 
-1. **Prioritas Malam Hari (Sleep Drive):**
-   * Jika malam tiba dan tingkat kelelahan `energy > 0.3`, agen otomatis berjalan menuju `barn` (kandang) untuk tidur selama 40–90 detik.
-2. **Prioritas Kehausan (Thirst Drive):**
-   * Jika `thirst > 0.6`, agen mencari air tawar. 60% memilih `pond` (kolam), 40% memilih air mancur `square`.
-3. **Prioritas Kelaparan (Hunger Drive):**
-   * Jika `hunger > 0.6`, agen memilih salah satu lokasi makan: `trough` (palung makan), `meadowW` (rumput bagus), `meadowE` (rumput masam), atau `orchard` (kebun apel).
-4. **Prioritas Sosial & Debat (Social Drive):**
-   * Jika kesepian, agen mendatangi `square`, `tavern` (The Wet Fleece), atau `hall` untuk berkumpul dan memicu percakapan atau perdebatan.
+1. **Night Priority (Sleep Drive):**
+   * When night falls and the exhaustion level `energy > 0.3`, the agent automatically walks to the `barn` to sleep for 40–90 seconds.
+2. **Thirst Priority (Thirst Drive):**
+   * If `thirst > 0.6`, the agent seeks fresh water. 60% choose the `pond`, 40% choose the `square` fountain.
+3. **Hunger Priority (Hunger Drive):**
+   * If `hunger > 0.6`, the agent picks one of the feeding locations: `trough` (feeding trough), `meadowW` (good grass), `meadowE` (sour grass), or `orchard` (apple orchard).
+4. **Social & Debate Priority (Social Drive):**
+   * When lonely, the agent heads to the `square`, `tavern` (The Wet Fleece), or `hall` to gather and trigger conversations or debates.
 
 ---
 
-## 3. Sistem Genetika DNA 9-Segmen
+## 3. 9-Segment DNA Genetics System
 
-Visual setiap llama tidak disimpan sebagai gambar PNG/GIF statis, melainkan diekspresikan melalui string DNA 9-segmen:
+Each llama's visual appearance is not stored as a static PNG/GIF image; it is expressed through a 9-segment DNA string:
 
 $$\text{DNA} = \text{wool} . \text{cut} . \text{ears} . \text{eyes} . \text{extra} . \text{hue} . \text{build} . \text{neck} . \text{gen}$$
 
-### Dekoder DNA (`Hc`):
+### DNA Decoder (`Hc`):
 ```javascript
 function Hc(dnaString) {
   const parts = dnaString.split(".").map(Number);
   return {
-    wool:  parts[0] || 0,                      // Tekstur/tipe wol
-    cut:   HairCuts[parts[1]]  ?? "shaggy",    // Gaya potongan rambut
-    ears:  EarStyles[parts[2]] ?? "up",        // Posisi telinga (up, droop, alert)
-    eyes:  EyeStyles[parts[3]] ?? "round",     // Bentuk mata (round, squint, wide)
-    extra: Accessories[parts[4]] ?? "none",    // Aksesoris (topi, kacamata, lonceng)
-    hue:   parts[5] || 0,                      // Pergeseran warna bulu (0-360 deg)
-    build: (parts[6] || 50) / 100,             // Ketebalan postur badan (0.1 - 0.95)
-    neck:  (parts[7] || 50) / 100,             // Panjang leher (0.1 - 0.95)
-    gen:   parts[8] || 0                       // Generasi silsilah
+    wool:  parts[0] || 0,                      // Wool texture/type
+    cut:   HairCuts[parts[1]]  ?? "shaggy",    // Haircut style
+    ears:  EarStyles[parts[2]] ?? "up",        // Ear position (up, droop, alert)
+    eyes:  EyeStyles[parts[3]] ?? "round",     // Eye shape (round, squint, wide)
+    extra: Accessories[parts[4]] ?? "none",    // Accessories (hat, glasses, bell)
+    hue:   parts[5] || 0,                      // Wool color shift (0-360 deg)
+    build: (parts[6] || 50) / 100,             // Body build thickness (0.1 - 0.95)
+    neck:  (parts[7] || 50) / 100,             // Neck length (0.1 - 0.95)
+    gen:   parts[8] || 0                       // Lineage generation
   };
 }
 ```
 
-### Rekombinasi & Mutasi Genetik (`rf`):
-Saat pengunjung melakukan **Fork** (`Ef`), anak mewarisi sifat induk dengan probabilitas mutasi:
+### Genetic Recombination & Mutation (`rf`):
+When a visitor performs a **Fork** (`Ef`), the child inherits the parent's traits with a mutation probability:
 ```javascript
 function rf(parentGenes, seedName) {
   const rng = seededRandom(seedName);
   const child = { ...parentGenes };
   
-  // 1. Kenaikan Generasi (Maksimal Cap G9)
+  // 1. Generation Increment (Max Cap G9)
   child.gen = Math.min(9, parentGenes.gen + 1);
   
-  // 2. Pergeseran Warna Bulu (Hue Mutation)
+  // 2. Wool Color Shift (Hue Mutation)
   const hueShift = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 26);
   child.hue = (parentGenes.hue + hueShift + 360) % 360;
   
-  // 3. Peluang Mutasi Ciri Fisik
-  if (rng() < 0.40) child.cut = randomFrom(HairCuts);    // 40% ganti gaya rambut
-  if (rng() < 0.30) child.eyes = randomFrom(EyeStyles);  // 30% mutasi bentuk mata
-  if (rng() < 0.45) child.extra = randomFrom(Accessories); // 45% aksesoris baru
+  // 3. Physical Trait Mutation Chance
+  if (rng() < 0.40) child.cut = randomFrom(HairCuts);    // 40% change haircut style
+  if (rng() < 0.30) child.eyes = randomFrom(EyeStyles);  // 30% mutate eye shape
+  if (rng() < 0.45) child.extra = randomFrom(Accessories); // 45% new accessory
   
-  // 4. Pergeseran Proporsi Badan & Leher (Morphological Drift)
+  // 4. Body & Neck Proportion Shift (Morphological Drift)
   child.build = clamp(0.1, 0.95, parentGenes.build + (rng() - 0.5) * 0.25);
   child.neck  = clamp(0.1, 0.95, parentGenes.neck  + (rng() - 0.5) * 0.25);
   
@@ -115,21 +115,21 @@ function rf(parentGenes, seedName) {
 
 ## 4. Procedural Skeletal Pixel Renderer (`class lf`)
 
-Llamabook tidak menggunakan sprite-sheet pra-render. Seluruh animasi dirender secara langsung di memori piksel:
+Llamabook does not use pre-rendered sprite sheets. All animation is rendered directly in pixel memory:
 
-1. **Pixel Buffer Resolusi Rendah:**
-   * Setiap llama digambar di atas buffer internal ukuran **52 x 58 piksel** (`new Uint32Array(52 * 58)`).
-   * Buffer ini kemudian di-blit ke canvas utama dengan faktor skala (misal 0.62x atau 1.5x) dan pixelation `imageSmoothingEnabled = false`.
+1. **Low-Resolution Pixel Buffer:**
+   * Each llama is drawn on an internal buffer sized **52 x 58 pixels** (`new Uint32Array(52 * 58)`).
+   * This buffer is then blitted to the main canvas with a scale factor (e.g. 0.62x or 1.5x) and pixelation via `imageSmoothingEnabled = false`.
 2. **Skeletal Bone Rig (`sf()`):**
-   Model memiliki 13 parameter sendi dinamis:
-   * `legs`: Array 4 kaki `[[x, y], [x, y], [x, y], [x, y]]`
-   * `bodyY`, `bodyTilt`: Elevasi dan sudut kemiringan badan
-   * `neckLean`, `neckCurve`: Kemiringan dan kurvatur leher
-   * `headTilt`, `jaw`, `lid`: Sudut kepala, bukaan rahang, dan kelopak mata
-   * `earL`, `earR`: Sudut telinga kiri dan kanan
-   * `tail`: Kibasan ekor
+   The model has 13 dynamic joint parameters:
+   * `legs`: Array of 4 legs `[[x, y], [x, y], [x, y], [x, y]]`
+   * `bodyY`, `bodyTilt`: Body elevation and tilt angle
+   * `neckLean`, `neckCurve`: Neck lean and curvature
+   * `headTilt`, `jaw`, `lid`: Head angle, jaw opening, and eyelid
+   * `earL`, `earR`: Left and right ear angles
+   * `tail`: Tail swish
 3. **Biological Cycles (`bi(anim, dt)`):**
-   * **Kedipan Mata (Blink):** Terjadi setiap 2.4 - 6.4 detik, kelopak mata menutup selama 0.14 detik.
-   * **Gerakan Telinga (Ear Twitch):** Telinga bergetar setiap 2.5 - 7.5 detik dengan fungsi sinus frekuensi tinggi.
-   * **Mengunyah Rumput (Chew Cycle):** Rahang bergerak ritmis secara berkala saat agen sedang merumput atau santai.
-   * **Kibasan Ekor (Tail Wag):** Berosilasi halus mengikuti langkah kaki saat berjalan.
+   * **Blink:** Occurs every 2.4 - 6.4 seconds; the eyelid closes for 0.14 seconds.
+   * **Ear Twitch:** Ears twitch every 2.5 - 7.5 seconds using a high-frequency sinusoidal function.
+   * **Chew Cycle:** The jaw moves rhythmically and periodically while the agent is grazing or idle.
+   * **Tail Wag:** Oscillates gently in sync with the footstep cadence while walking.

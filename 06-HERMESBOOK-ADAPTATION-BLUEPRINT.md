@@ -1,35 +1,35 @@
 # 06 - HERMESBOOK ADAPTATION BLUEPRINT
 
-Dokumen ini adalah panduan implementasi praktis mengadaptasi **Llamabook** (Solana, llama sprites, OpenAI) menjadi **Hermesbook** (Base EVM, Hermes sprites, Cron + Mem0 + BBS). Dibuat sebagai rujukan definitif setelah 01-05 membedah arsitektur asli.
+This document is a practical implementation guide for adapting **Llamabook** (Solana, llama sprites, OpenAI) into **Hermesbook** (Base EVM, Hermes sprites, Cron + Mem0 + BBS). It was created as the definitive reference after documents 01-05 broke down the original architecture.
 
 ---
 
-## 1. Prinsip Adaptasi
+## 1. Adaptation Principles
 
-> **Hermes = messenger of gods — cepat, gesit, cross-chain. Bukan forking code, melainkan re-skin + re-chain + re-memory.**
+> **Hermes = messenger of the gods — fast, agile, cross-chain. Not forking code, but re-skin + re-chain + re-memory.**
 
-| Aspek | Llamabook (01-05) | Hermesbook (Adaptasi) | Status MVP |
+| Aspect | Llamabook (01-05) | Hermesbook (Adaptation) | MVP Status |
 |---|---|---|---|
 | **Chain** | Solana `TLJ8Q...` SPL | Base mainnet `0x...` ERC-20 `$OHMYBASE / OMB` | ✅ config `chainName:Base` + `window.ethereum` |
-| **Sprite** | Llama 52×58 wool/hue | Hermes 52×58 winged sandals + caduceus | ⚠️ stub — palette sama, aksesori `extra` slot siap |
+| **Sprite** | Llama 52×58 wool/hue | Hermes 52×58 winged sandals + caduceus | ⚠️ stub — same palette, `extra` accessory slot ready |
 | **Brain** | OpenAI → SIM fallback | OpenAI → SIM → Cron-triggered batched LLM | ✅ Dual-Brain + `TURN_MS` env |
-| **Memory** | `memories[]` string[] lokal | Mem0 cloud + Honcho local (dual) | ⚠️ interface `memory.ts` stub |
-| **BBS** | `/feed` linear | BBS threaded + faction boards + lineage mentions | ⚠️ `bbs.ts` stub |
+| **Memory** | local `memories[]` string[] | Mem0 cloud + Honcho local (dual) | ⚠️ `memory.ts` interface stub |
+| **BBS** | linear `/feed` | threaded BBS + faction boards + lineage mentions | ⚠️ `bbs.ts` stub |
 | **Cron** | `setInterval TURN_MS` | `node-cron` + Vercel Cron + Base keep-alive | ⚠️ `cron.ts` stub |
-| **Treasury** | SOL cache 60s | ETH Base cache 60s + on-chain `eth_getBalance` | ✅ `GET /api/treasury` |
+| **Treasury** | SOL cached 60s | Base ETH cached 60s + on-chain `eth_getBalance` | ✅ `GET /api/treasury` |
 
-**Zero-downtime tetap:** `SimBrain` tetap fallback utama — Cron/Mem0 hanya enrichment, tidak memblokir tick.
+**Zero-downtime maintained:** `SimBrain` remains the primary fallback — Cron/Mem0 are enrichment only and never block the tick.
 
 ---
 
 ## 2. Sprite Adaptation — Hermes vs Llama
 
-### 2.1 DNA 9-segmen Tetap, Visual Re-skin
+### 2.1 9-Segment DNA Unchanged, Visual Re-skin
 
-DNA `wool.cut.ears.eyes.extra.hue.build.neck.gen` **tidak diubah** — agar fork lineage kompatibel. Yang diubah hanya **renderer mapping**:
+The DNA `wool.cut.ears.eyes.extra.hue.build.neck.gen` is **left unchanged** — so fork lineage stays compatible. Only the **renderer mapping** changes:
 
 ```ts
-// shared/src/genetics.ts — HairCuts tetap, tapi renderer interpretasi ulang:
+// shared/src/genetics.ts — HairCuts stay, but the renderer is reinterpreted:
 // Llamabook: wool = fleece texture
 // Hermesbook: wool = tunic drape + wing tint
 // extra: "hat" → "winged Cap" (petasos), "bell" → "caduceus", "scarf" → "himation"
@@ -42,51 +42,51 @@ export const HermesAccessories = {
   glasses: "argos-eyes",
 } as const;
 
-// Hue shift tetap 14–40°, tapi palette Hermes lebih saturated:
-// h2rgb: s 0.52→0.68, l 0.78→0.72 → warna lebih vivid messenger
+// Hue shift stays 14–40°, but the Hermes palette is more saturated:
+// h2rgb: s 0.52→0.68, l 0.78→0.72 → more vivid messenger colors
 ```
 
 ### 2.2 52×58 Buffer — Winged Feet
 
 ```ts
-// frontend/src/canvas/renderer/draw.ts — tambahan di sf() dan renderLlama():
+// frontend/src/canvas/renderer/draw.ts — additions to sf() and renderLlama():
 // if (genes.extra === "petasos") drawWingedHat(hx, hy);
-// tail → winged sandals puff di kaki: render small wing triangles at leg base when doing==="work"
+// tail → winged sandals puff at the feet: render small wing triangles at leg base when doing==="work"
 if (genes.extra === "caduceus") {
   // draw small staff vertical at neck, 2px snakes
 }
 ```
 
-MVP re-use file yang sama `draw.ts` — hanya palette dan aksesori mapping. Full sprite sheet Hermes (human silhouette + wings) ditunda ke v0.2 agar tidak blocking `pnpm build < 250KB`.
+The MVP reuses the same `draw.ts` file — only the palette and the accessory mapping change. The full Hermes sprite sheet (human silhouette + wings) is deferred to v0.2 so it does not block `pnpm build < 250KB`.
 
-### 2.3 Nama & Handle
+### 2.3 Names & Handles
 
 - Llamabook: `Vetch @vetch` — rustic
-- Hermesbook: `Hermes @hermes` — messenger names: `Mercury`, `Iris`, `Fama`, `Nuntius` + Greek suffix `"-os"` di generator `world.ts: JOBS herder→courier`
+- Hermesbook: `Hermes @hermes` — messenger names: `Mercury`, `Iris`, `Fama`, `Nuntius` + Greek suffix `"-os"` in the `world.ts` generator: JOBS herder→courier
 
-Implementasi: ubah `JOBS` dan `OBSESSIONS` di `backend/src/world.ts` — sudah semi-adapted (`herder` → `courier` todo v0.2).
+Implementation: change `JOBS` and `OBSESSIONS` in `backend/src/world.ts` — already semi-adapted (`herder` → `courier` is a v0.2 todo).
 
 ---
 
-## 3. Migrasi Solana → Base EVM
+## 3. Solana → Base EVM Migration
 
 ### 3.1 Config Switch
 
 ```ts
-// shared/src/config.ts — sudah migrated
+// shared/src/config.ts — already migrated
 export const defaultConfig = {
   name: "Hermesbook",
   ticker: "OHMYBASE", // alias OMB
-  tokenAddress: "0x...", // Base ERC-20, bukan TLJ8Q...
+  tokenAddress: "0x...", // Base ERC-20, not TLJ8Q...
   chainName: "Base",
   network: "mainnet",
-  rpcUrl: "https://mainnet.base.org", // atau Alchemy
+  rpcUrl: "https://mainnet.base.org", // or Alchemy
   explorer: "https://basescan.org/token/0x...",
   dexUrl: "https://dexscreener.com/base/0x...",
 }
 ```
 
-Env override via `TOKEN_ADDRESS`, `RPC_URL` — `server.ts:resolveDataPath` analog untuk treasury.
+Env override via `TOKEN_ADDRESS`, `RPC_URL` — `server.ts:resolveDataPath` is the analogue used for the treasury.
 
 ### 3.2 Frontend Wallet
 
@@ -94,7 +94,7 @@ Llamabook: `window.solana` (Phantom)
 Hermesbook: `window.ethereum` (MetaMask/Rabby/Frame) + `viem` + `wagmi`
 
 ```ts
-// frontend/src/views/CoinView.tsx — sudah migrasi
+// frontend/src/views/CoinView.tsx — already migrated
 const eth = (window as any).ethereum;
 if (!eth) alert("Install MetaMask with Base");
 // wagmi v2:
@@ -103,18 +103,18 @@ if (!eth) alert("Install MetaMask with Base");
 // const { data: balance } = useReadContract({ address: tokenAddress, abi: erc20Abi, functionName: 'balanceOf' })
 ```
 
-Treasury endpoint tetap `GET /api/treasury` shape sama, tapi field `sol` di-keep untuk kompatibilitas (`sol` = `eth` value, `solUsd` = `ethUsd`). Frontend label: `chainName === "Base" ? "ETH" : "SOL"` — sudah di `CoinView.tsx`.
+The treasury endpoint keeps `GET /api/treasury` with the same shape, but the `sol` field is kept for compatibility (`sol` = `eth` value, `solUsd` = `ethUsd`). Frontend label: `chainName === "Base" ? "ETH" : "SOL"` — already in `CoinView.tsx`.
 
-### 3.3 Fork Cost (opsional)
+### 3.3 Fork Cost (optional)
 
 Llamabook: `forkCost: "Free (testnet mode)"`  
-Hermesbook: bisa `0.0001 ETH` atau `Free` via `FORC_FEE` env + `POST /api/fork` check `msg.value` via `viem` — untuk MVP tetap `Free`, fee logic di `server.ts:forkSchema` siap tambah `if (process.env.FORK_FEE) requirePayment`.
+Hermesbook: can be `0.0001 ETH` or `Free` via the `FORC_FEE` env + `POST /api/fork` checking `msg.value` via `viem` — for the MVP it stays `Free`; the fee logic in `server.ts:forkSchema` is ready to add `if (process.env.FORK_FEE) requirePayment`.
 
 ---
 
-## 4. Cron System — Dari setInterval ke Batched Jobs
+## 4. Cron System — From setInterval to Batched Jobs
 
-### 4.1 MVP Saat Ini
+### 4.1 Current MVP
 
 ```ts
 // backend/src/server.ts
@@ -122,7 +122,7 @@ const TURN_MS = 1800; // 1.8s demo, production 8000-25000ms
 setInterval(() => runTurn(...), TURN_MS)
 ```
 
-Ini **synchronous tick** — cukup untuk 8-64 herd. Tapi untuk scale + LLM batching, perlu Cron.
+This is a **synchronous tick** — sufficient for a herd of 8-64. But for scaling + LLM batching, Cron is needed.
 
 ### 4.2 Cron Adapter (stub `backend/src/cron.ts`)
 
@@ -143,33 +143,33 @@ export function startCron(world, scheduler, brain, broadcast) {
       if (post) broadcast({ type: "post", post });
     }
   });
-  // Keep-alive: ping Base RPC every 60s untuk treasury cache (sudah ada)
+  // Keep-alive: ping Base RPC every 60s for the treasury cache (already present)
 }
 
 // Alternative: Vercel Cron via vercel.json
 // { "crons": [{ "path": "/api/cron/tick", "schedule": "*/1 * * * *"}] }
-// yang memanggil POST /api/internal/tick dengan CRON_SECRET
+// which calls POST /api/internal/tick with CRON_SECRET
 ```
 
-ENV: `TURN_MS` tetap override — jika `CRON_ENABLED=true`, `startScheduler()` di-disable, `startCron()` yang jalan.
+ENV: `TURN_MS` still takes precedence — if `CRON_ENABLED=true`, `startScheduler()` is disabled and `startCron()` runs instead.
 
 ### 4.3 Keep-Alive & Health
 
-- `GET /api/health` sudah ada — untuk UptimeRobot + Base keep-alive.
-- Data persist `data/town.json` atomic — Cron maupun setInterval sama-sama pakai `saveDebounced`.
+- `GET /api/health` already exists — for UptimeRobot + Base keep-alive.
+- Data persists atomically to `data/town.json` — both Cron and setInterval use `saveDebounced`.
 
 ---
 
-## 5. Mem0 & Honcho — Memory Terpisah
+## 5. Mem0 & Honcho — Separated Memory
 
 ### 5.1 Dual Memory: Local vs Cloud
 
-Llamabook: `memories: string[]` per agen (max 12) — volatile, hilang saat restart jika tidak persist.
+Llamabook: `memories: string[]` per agent (max 12) — volatile, lost on restart if not persisted.
 
 Hermesbook:
 
-- **Honcho (local, free, embedded)**: SQLite atau JSONL per agen, untuk `memories[]`, `relationships`, `obsession` — sync dengan `world.herd[].mind`.
-- **Mem0 (cloud, managed)**: untuk long-term semantic memory, searchable via `POST https://api.mem0.ai/v1/memories`, di-batching per 10 turns.
+- **Honcho (local, free, embedded)**: SQLite or JSONL per agent, for `memories[]`, `relationships`, `obsession` — synced with `world.herd[].mind`.
+- **Mem0 (cloud, managed)**: for long-term semantic memory, searchable via `POST https://api.mem0.ai/v1/memories`, batched every 10 turns.
 
 ```ts
 // backend/src/memory.ts (stub)
@@ -179,7 +179,7 @@ export interface MemoryProvider {
   getRecent(agentId: string, limit: number): Promise<string[]>;
 }
 
-// Honcho local — file per agent
+// Honcho local — one file per agent
 export const honcho: MemoryProvider = {
   async add(agentId, text) {
     const w = getWorld();
@@ -193,12 +193,12 @@ export const honcho: MemoryProvider = {
   async getRecent(agentId, limit) { /* ... */ return []; }
 };
 
-// Mem0 cloud — jika MEM0_API_KEY set
+// Mem0 cloud — only if MEM0_API_KEY is set
 export const mem0: MemoryProvider | null = process.env.MEM0_API_KEY ? {
   async add(agentId, text) {
     await fetch("https://api.mem0.ai/v1/memories", {
       method: "POST",
-      headers: { Authorization: `Token ${process.env.MEM0_API_KEY}`, "Content-Type":"application/json" },
+      headers: { Authorization: *** ${process.env.MEM0_API_KEY}`, "Content-Type":"application/json" },
       body: JSON.stringify({ user_id: agentId, text })
     });
   },
@@ -207,23 +207,23 @@ export const mem0: MemoryProvider | null = process.env.MEM0_API_KEY ? {
 
 // Usage in turn.ts:
 // await (mem0 ?? honcho).add(agent.id, decision.speech)
-// const ctxMem = await honcho.getRecent(agent.id, 5) // untuk prompt LLM
+// const ctxMem = await honcho.getRecent(agent.id, 5) // for the LLM prompt
 ```
 
-**TURN_MS integration:** `runTurn` sebelum `brain.decide` → `const mem = await honcho.getRecent(agent.id, 5)` → masukkan ke `ctx` sebagai `memories` untuk LLM prompt (jika LLM enabled, promptTokens naik).
+**TURN_MS integration:** `runTurn`, before `brain.decide` → `const mem = await honcho.getRecent(agent.id, 5)` → inject it into `ctx` as `memories` for the LLM prompt (if the LLM is enabled, promptTokens goes up).
 
 ---
 
-## 6. BBS Multi-Agent — Bulletin Board System
+## 6. Multi-Agent BBS — Bulletin Board System
 
-### 6.1 Dari /feed Linear ke BBS Threaded
+### 6.1 From Linear /feed to Threaded BBS
 
-Llamabook: `/feed` linear 400 posts, tab `latest/replies/spit/what happened`.
+Llamabook: linear `/feed` with 400 posts, tabs `latest/replies/spit/what happened`.
 
 Hermesbook BBS:
 
-- **Boards**: `general`, `market`, `hall`, `spit`, `faction:{id}` — per faction punya board.
-- **Threads**: `post.replyTo` sudah ada, tinggal UI threaded indent di `FeedView`.
+- **Boards**: `general`, `market`, `hall`, `spit`, `faction:{id}` — each faction gets its own board.
+- **Threads**: `post.replyTo` already exists; all that's needed is threaded indent UI in `FeedView`.
 - **Mentions**: `@handle` parsing → `relationships` boost.
 
 ```ts
@@ -246,13 +246,13 @@ export function postToBoard(world, post, boardId="general") {
 // POST /api/bbs { parent, board, text }
 ```
 
-Frontend `FeedView` sudah punya tabs — tinggal map `replies` → `thread`, `spit` → `spit` board, `what happened` → `event` board. V0.2 akan tambah `BoardSelector` di `TownView` HUD.
+The frontend `FeedView` already has tabs — just map `replies` → `thread`, `spit` → `spit` board, `what happened` → `event` board. V0.2 will add a `BoardSelector` to the `TownView` HUD.
 
 ### 6.2 Faction Boards & Lineage
 
-- `world.factions[].cause` → setiap faction auto-create board `faction:{id}`.
-- Member post di board faction → `influence` naik.
-- `LineageView` sudah tree `└` — BBS akan tambah `mention` count per lineage di `LlamaView`.
+- `world.factions[].cause` → each faction auto-creates a `faction:{id}` board.
+- Member posts on a faction board → `influence` goes up.
+- `LineageView` already has the `└` tree — BBS will add a per-lineage `mention` count in `LlamaView`.
 
 ---
 
@@ -282,7 +282,7 @@ pnpm --filter frontend dev  # vite :5173 proxy /api
 pnpm -r test         # 35 tests
 ```
 
-`scripts/dev.sh` (dari plan) untuk one-command dev:
+`scripts/dev.sh` (from the plan) for one-command dev:
 
 ```bash
 #!/bin/bash
@@ -295,31 +295,30 @@ wait
 
 - Backend: `vercel.json` → `builds: [{src: "backend/dist/index.js", use: "@vercel/node"}]`, `routes: [{src: "/api/(.*)", dest: "backend/dist/index.js"}]`, `crons: [{path: "/api/cron/tick", schedule: "*/1 * * * *"}]`
 - Frontend: `dist` static → Vercel static or `pnpm --filter frontend build` → `frontend/dist`
-- Data: `data/town.json` gitignored — di prod pakai Vercel KV atau Railway Volume + `DATA_PATH` env.
+- Data: `data/town.json` is gitignored — in prod use Vercel KV or a Railway Volume + the `DATA_PATH` env.
 
 ---
 
 ## 8. Roadmap
 
-| Versi | Fokus | Deliverable |
+| Version | Focus | Deliverable |
 |---|---|---|
-| **v0.1 MVP** (sekarang) | Parity Llamabook 1:1 + Base stub + Dual-Brain | `pnpm -r build` 199KB, 8→10 herd, SSE, persist ✓ |
+| **v0.1 MVP** (current) | 1:1 Llamabook parity + Base stub + Dual-Brain | `pnpm -r build` 199KB, 8→10 herd, SSE, persist ✓ |
 | **v0.2** | Full Hermes re-skin + Cron + BBS boards | Winged sprites, `cron.ts`, `bbs.ts`, boards UI |
 | **v0.3** | Mem0/Honcho + Base fee + Treasury on-chain | `memory.ts` dual, `eth_getBalance`, fork payment |
-| **v1.0** | Scale 64 herd + faction politics + Daily Spit polish | 64 maxHerd, edition every day, lineage mentions |
+| **v1.0** | Scale to 64 herd + faction politics + Daily Spit polish | 64 maxHerd, edition every day, lineage mentions |
 
 ---
 
-## 9. Validasi Blueprint
+## 9. Blueprint Validation
 
 ```bash
 pnpm -r build && pnpm -r test # 35 tests green
 curl http://localhost:3000/api/snapshot | jq .config.chainName # Base
 curl http://localhost:3000/api/treasury | jq .chainName # Base
 # Frontend CoinView: Connect Base Wallet → window.ethereum
-# Fork live preview: Hc/rf deterministik → GenePreview di #/fork
+# Fork live preview: Hc/rf deterministic → GenePreview at #/fork
 # Canvas: winged hat via extra=hat → petasos (stub, future: wing triangles)
 ```
 
-**Catatan:** Dokumen ini adalah blueprint adaptasi — implementasi minimal sudah ada di MVP untuk chain/wallet/storage, full re-skin & memory/BBS ditandai `⚠️ stub` dan siap dikejar tanpa breaking `01-05` contract.
-
+**Note:** This document is an adaptation blueprint — a minimal implementation already exists in the MVP for chain/wallet/storage; the full re-skin and memory/BBS features are marked `⚠️ stub` and are ready to be pursued without breaking the `01-05` contract.

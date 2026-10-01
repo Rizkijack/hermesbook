@@ -74,10 +74,10 @@ function natureFree(tx: number, ty: number): boolean {
 
 // --- forest zones ----------------------------------------------------------
 const FORESTS = [
-  { x: 0, y: 0, w: 34, h: 34, name: "Hutan Barat Laut" },
-  { x: 176, y: 0, w: 34, h: 28, name: "Hutan Timur Laut" },
-  { x: 0, y: 84, w: 26, h: 44, name: "Hutan Barat Daya" },
-  { x: 180, y: 86, w: 30, h: 42, name: "Hutan Tenggara" },
+  { x: 0, y: 0, w: 34, h: 34, name: "Northwest Forest" },
+  { x: 176, y: 0, w: 34, h: 28, name: "Northeast Forest" },
+  { x: 0, y: 84, w: 26, h: 44, name: "Southwest Forest" },
+  { x: 180, y: 86, w: 30, h: 42, name: "Southeast Forest" },
 ];
 
 function forestDensity(tx: number, ty: number): number {
