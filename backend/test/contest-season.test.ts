@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SEASON, pointsForRank, type ContestResult, type ContestSample, type Season } from "@hermesbook/shared";
+import { CONTEST, SEASON, pointsForRank, type ContestResult, type ContestSample, type Season } from "@hermesbook/shared";
 import { scoreContest } from "../src/contest.js";
 import {
   applyContestResult,
@@ -60,7 +60,9 @@ describe("createSeason", () => {
 
 describe("format A end to end (08 §5, §13)", () => {
   const ROSTER = ["hux", "tux", "vetch", "pip"] as const;
-  // one winner per trial day, as an index into the roster
+  // One winner per trial CONTEST, as an index into the roster. Ten of them =
+  // `SEASON.trials` days × `CONTEST.perDay.min`, i.e. the *shortest* season the
+  // cadence can produce (a day hosts 2–3 contests, decision 1 / 08 D3).
   const WINNERS = [0, 1, 2, 3, 0, 1, 2, 3, 0, 1];
   /** 4-entrant contest, winner first, then the rest of the roster in order */
   const order = (k: number) => [
@@ -70,10 +72,12 @@ describe("format A end to end (08 §5, §13)", () => {
     ROSTER[(k + 3) % ROSTER.length],
   ];
 
-  /** the ten trial days, folded in through the one public entry point */
+  /** the whole trial stage, folded in through the one public entry point */
   function playTrials(): Season {
     let season = createSeason(1, T0);
-    for (let day = 0; day < SEASON.trials; day++) {
+    // over the fixture, not `SEASON.trials`: since decision 1 a trial *day*
+    // hosts 2–3 contests and the ledger accumulates per contest
+    for (let day = 0; day < WINNERS.length; day++) {
       season = applyContestResult(
         season,
         result(order(WINNERS[day])),
@@ -83,22 +87,24 @@ describe("format A end to end (08 §5, §13)", () => {
     return season;
   }
 
-  it("runs SEASON.trials trial days", () => {
-    // guards the fixture itself: the table is exactly as long as the format
-    expect(WINNERS).toHaveLength(SEASON.trials);
+  it("runs SEASON.trials trial days of CONTEST.perDay.min contests each", () => {
+    // guards the fixture itself: the table is exactly the shortest season the
+    // format allows, so a cadence change fails here first
+    expect(WINNERS).toHaveLength(SEASON.trials * CONTEST.perDay.min);
   });
 
-  it("accumulates 10 / 5 / 1 / 0 per day into a season table", () => {
+  it("accumulates 10 / 5 / 1 / 0 per contest into a season table", () => {
     // winner counts: hux 3, tux 3, vetch 2, pip 2
     // hux: 3x10 + 0 + 2x1 + 2x5 = 42      tux: 3x5 + 3x10 + 0 + 2x1 = 47
     // vetch: 3x1 + 3x5 + 2x10 + 0 = 38    pip: 0 + 3x1 + 2x5 + 2x10 = 33
     expect(board(playTrials())).toEqual({ tux: 47, hux: 42, vetch: 38, pip: 33 });
   });
 
-  it("counts one win or one loss per contested day", () => {
+  it("counts one win or one loss per contest", () => {
     const s = playTrials();
-    expect(row(s, "hux")).toMatchObject({ points: 42, wins: 3, losses: SEASON.trials - 3 });
-    expect(row(s, "pip")).toMatchObject({ points: 33, wins: 2, losses: SEASON.trials - 2 });
+    // losses are "contests contested minus wins": ten trials, not five
+    expect(row(s, "hux")).toMatchObject({ points: 42, wins: 3, losses: WINNERS.length - 3 });
+    expect(row(s, "pip")).toMatchObject({ points: 33, wins: 2, losses: WINNERS.length - 2 });
   });
 
   it("sends exactly the top SEASON.semifinalists on to the semis", () => {
@@ -121,12 +127,13 @@ describe("format A end to end (08 §5, §13)", () => {
     // vetch 38 +5 (sf) = 43        · pip 33 +5 (sf) = 38
     expect(board(s)).toEqual({ tux: 67, hux: 57, vetch: 43, pip: 38 });
     const { season: next, champion } = rollSeason(s, T0 + 999);
-    // 5 of tux's 12 contests were wins; it lost none of the knockout rounds
+    // 5 of tux's 12 contests were wins (10 trials + 2 knockouts); the 5 trial
+    // losses came from the round robin, none from the knockout rounds
     expect(champion).toMatchObject({
       agentId: "tux",
       points: 67,
       wins: 5,
-      losses: SEASON.trials - 3,
+      losses: WINNERS.length - 3,
     });
     // the reset is the whole return hook (08 §5, D10)
     expect(next.no).toBe(2);

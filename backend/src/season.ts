@@ -39,8 +39,12 @@ type SeasonLedger = Season & { appliedContests?: string[] };
  * may hold rubbish) even though `Season.appliedContests` is now declared in
  * shared/src/types.ts — an optional field on a persisted object is exactly the
  * kind that is missing from saves written before it existed.
+ *
+ * Exported because the schedule reads it too: a contest id carries its day
+ * (`ct-s{season}-d{day}-i{index}`), so the driver derives the season phase
+ * from the *days* the ledger has seen, not from a raw contest count.
  */
-function appliedContests(season: Season): readonly string[] {
+export function appliedContestIds(season: Season): readonly string[] {
   const list = (season as SeasonLedger).appliedContests;
   return Array.isArray(list) ? list : [];
 }
@@ -53,9 +57,12 @@ function appliedContests(season: Season): readonly string[] {
  * already restart-safe: this is the number a contest id is stamped from, and a
  * counter that reset to 0 on reload would hand two different contests the same
  * id and let the second one overwrite the first.
+ *
+ * Note the unit: this is *contests*, while `SEASON.trials` counts *days*
+ * (contests arrive in per-day slates). Quota, not phase, is what this drives.
  */
 export function seasonContestIndex(season: Season | undefined): number {
-  return season ? appliedContests(season).length : 0;
+  return season ? appliedContestIds(season).length : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +104,7 @@ export function applyContestResult(
   result: ContestResult,
   meta: { contestId: string; kind: ContestKind }
 ): Season {
-  const applied = appliedContests(season);
+  const applied = appliedContestIds(season);
 
   // ── IDEMPOTENCY: the load-bearing invariant ──────────────────────────────
   //

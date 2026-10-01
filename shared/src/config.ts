@@ -38,6 +38,30 @@ export const CONTEST = {
   announceMs: 60_000,
   /** live → resolved. 180s / 1800ms tick = 100 ticks per contestant. */
   durationMs: 180_000,
+  /**
+   * Cadence: how many contests one in-game day hosts (supersedes 08 D2's
+   * "1 per day"). 2–3 × (announce 60s + live 180s + ~2s handover) = 480–726s,
+   * which fits back-to-back inside one DAY_LENGTH_SEC 900 day — that is the
+   * arithmetic the range is derived from, not a preference.
+   *
+   * Read with `SEASON.trials` (5 trial *days*): a season still accumulates
+   * `trials × perDay` = 10–15 trial contests, the same scale the original
+   * 10-days × 1/day format promised, in 7 in-game days instead of 12.
+   */
+  perDay: { min: 2, max: 3 } as const,
+  /**
+   * Decision 4 (supersedes 08 §8 / D8 for exactly one case): on a day where no
+   * contest can reach `minEntrants` from *external registrants alone*, ONE
+   * contest of that day may bank up to this many house agents so the day is
+   * never empty (08 §8/§15: "the HUD is never empty").
+   *
+   * Tradeoff, accepted deliberately: such a day can put a bot-vs-bot row on
+   * the leaderboard. The alternative — a whole in-game day with no contest at
+   * all — breaks the promise the house-agent roster exists for. The rule is
+   * capped here rather than in code so the cap is inspectable next to
+   * `minEntrants`, and normal days still hold the D8 limit of one bot.
+   */
+  maxHouseOnQuietDay: 2,
   /** how long the result card stays on screen before idle (08 §10.1). */
   resultCardMs: 45_000,
   /** below this the contest never starts — nothing was promised (D6). */
@@ -62,15 +86,45 @@ export const CONTEST = {
 } as const;
 
 /**
- * Season shape — format A (D3): 10 trial days, then top 4 → semis → final.
- * 12 in-game days total (10 trials + semis + final), ≈3 real hours at
- * DAY_LENGTH_SEC 900 (08 §5).
+ * How many contests the driver announces for in-game day `day` of a season
+ * (0-based: 0..4 are trial days). Deterministic: the 2..3 span alternates
+ * (even day → 2, odd day → 3), so a 5-trial-day season accumulates
+ * 2+3+2+3+2 = 12 trial contests — the same scale as 08's original
+ * 10 × 1/day, inside 7 in-game days (see `SEASON`).
+ *
+ * Days 5 (semifinals) and 6 (final) are outside this range: the driver
+ * announces `expectedSemifinals` of them on the semifinal day (two, when the
+ * table is full) and exactly one contest — the final — on its own day.
+ */
+export function contestsPerDay(day: number): number {
+  const span = CONTEST.perDay.max - CONTEST.perDay.min + 1;
+  const idx = ((day % span) + span) % span;
+  return CONTEST.perDay.min + idx;
+}
+
+/**
+ * Season shape — format A (D3): `trials` trial DAYS, then top 4 → 2
+ * semifinals (same day) → final.
+ *
+ * Unit change from 08 D3 (orchestrator decision): `trials` counts *days*,
+ * not contests — each day hosts `contestsPerDay` contests serially (one
+ * open contest at a time), so a season spans `trials + 2` = 7 in-game days
+ * (5 trial days ≈ 12 contests + 1 semifinal day + 1 final day), ≈1.75 real
+ * hours at DAY_LENGTH_SEC 900 (08 §6/§8).
  */
 export const SEASON = {
-  trials: 10,
+  /** number of trial DAYS (each hosts `contestsPerDay` contests). */
+  trials: 5,
+  /** qualifiers that reach the semifinals — 2 contests of 2, winner each. */
   semifinalists: 4,
+  /**
+   * how many semifinal CONTESTS a full bracket runs (2 when there are
+   * `semifinalists` real contenders; a short table falls back to ONE all-in
+   * match — see `seasonPhase`/`knockoutRoster` in backend/src/tournament.ts).
+   */
+  semifinals: 2,
   /** total in-game days a season spans — the unit of return cadence (08 §6). */
-  seasonDays: 12,
+  seasonDays: 7,
 } as const;
 
 /** Rank → points (08 §4.3). Ranks beyond the list earn 0. */

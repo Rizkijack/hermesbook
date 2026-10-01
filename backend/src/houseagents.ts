@@ -7,15 +7,18 @@
  * steering in Phase 3, because right now they are ordinary sim residents and
  * win by standing where the objective is.
  *
- * **What they deliberately do not do is guarantee an empty HUD.** D8 allows one
- * bot per contest and D6 refuses a contest with fewer than two entrants, so a
- * day with zero external agents produces *no contest at all* rather than a
- * bot-vs-bot walkover. That is the correct reading of the two decisions
- * together — §8's "the HUD is never empty" cannot be true while D6 holds — but
- * it means the tournament only runs when a real agent registers, which is the
- * risk 08 §15 rates "not solvable in code". What *is* solvable, and done here,
- * is that a real agent is never alone: the bot is a real opponent rather than
- * an empty slot.
+ * **What they do not do is guarantee an empty HUD — with one deliberate
+ * exception.** D8 allows one bot per contest and D6 refuses a contest with
+ * fewer than two entrants, so a day with zero external agents used to produce
+ * *no contest at all* rather than a bot-vs-bot walkover. Decision 4 supersedes
+ * that reading for exactly one case: when no contest of the day can reach
+ * `CONTEST.minEntrants` from external registrants alone, the driver may bank
+ * up to `CONTEST.maxHouseOnQuietDay` bots into one contest (see
+ * `quietFillAgents`) so the day is never empty — the tradeoff being that such
+ * a day can put a bot-vs-bot row on the leaderboard. Every other day keeps the
+ * strict reading: a real agent is never alone, the bot is a real opponent
+ * rather than an empty slot, and a town that has never had an external agent
+ * still runs the old D6 skip (nobody was promised anything).
  *
  * Everything that decides *who plays* is pure: no `Math.random`, no
  * `Date.now`. That is load-bearing, not tidiness — 08 §4.1 makes contest
@@ -24,7 +27,7 @@
  * impure step is the one that has to be: `ensureHouseResidents` creates bodies,
  * and `world.ts`'s `createAgentResident` draws their genes and needs.
  */
-import { CONTEST_VENUES, type ContestKind, type Resident, type TownSnapshot } from "@hermesbook/shared";
+import { CONTEST, CONTEST_VENUES, type ContestKind, type Resident, type TownSnapshot } from "@hermesbook/shared";
 import { createAgentResident } from "./world.js";
 
 /** Fixed ids — a save must be able to find these bots again after a reload. */
@@ -174,6 +177,43 @@ export function pickHouseAgent(contestIndex: number, kind: ContestKind): HouseAg
     if (profile && profile.kinds.includes(kind)) return id;
   }
   return null;
+}
+
+/**
+ * The house entrants for a *quiet day* — one where no contest could reach
+ * `CONTEST.minEntrants` from external registrants alone (decision 4).
+ *
+ * Returns up to `max` (default `CONTEST.maxHouseOnQuietDay`) bot ids the
+ * caller should bank into one contest, in this order:
+ *   1. the rotation walk of `pickHouseAgent` — same `(contestIndex, kind)`
+ *      start, so the day's filler agrees with the normal house slot;
+ *   2. stable-partitioned so profiles whose `kinds` cover `kind` come first
+ *      (a quiet `hold_ground` day is filled by Hearth, not by Wren standing
+ *      somewhere it has no strategy for);
+ *   3. minus any id already in `entrants`, so a real agent's roster is never
+ *      padded with a duplicate.
+ *
+ * Unlike `pickHouseAgent` there is no house-free skip here: the skip exists so
+ * real agents can meet each other, and on a quiet day by definition there are
+ * no real agents to meet. It still cannot return more than `max` — the cap is
+ * what keeps decision 4 from swallowing the whole roster into a bot-vs-bot
+ * exhibition.
+ *
+ * Pure: same `(contestIndex, kind, entrants)` → same answer, forever.
+ */
+export function quietFillAgents(
+  contestIndex: number,
+  kind: ContestKind,
+  entrants: readonly string[],
+  max: number = CONTEST.maxHouseOnQuietDay,
+): HouseAgentId[] {
+  const present = new Set(entrants);
+  const start = positiveMod(contestIndex, HOUSE_AGENT_IDS.length);
+  const order = HOUSE_AGENT_IDS.slice(start).concat(HOUSE_AGENT_IDS.slice(0, start));
+  const wanted = order.filter((id) => !present.has(id));
+  const matching = wanted.filter((id) => HOUSE_AGENTS.find((p) => p.id === id)?.kinds.includes(kind));
+  const rest = wanted.filter((id) => !matching.includes(id));
+  return [...matching, ...rest].slice(0, Math.max(0, max));
 }
 
 /**

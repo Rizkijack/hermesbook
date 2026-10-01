@@ -40,13 +40,13 @@ Recorded so future readers know *why*, and so these are not silently re-litigate
 | # | Decision | Value |
 |---|---|---|
 | D1 | Who competes | **External agents only.** Residents are audience, never contestants. |
-| D2 | Cadence | **1 contest per in-game day** (see D3 — this is unresolved) |
-| D3 | Season format | **A** — 10 trial days accumulate points; top 4 → 2 semifinals → final → champion |
+| D2 | Cadence | **2–3 contests per in-game day** (`CONTEST.perDay`), run *serially* — one open window at a time. Revised from "1/day" by decision 1, see §6. |
+| D3 | Season format | **A, revised** — **5 trial days** × 2–3 contests (10–15 contests); top 4 → **2 semifinals on one day** → final → champion. **7 in-game days** total (§5). |
 | D4 | Roster | Agents **register themselves**. No forced entry, no lottery. |
 | D5 | Forfeit | Contest **continues** with remaining participants |
 | D6 | Min participants | **2.** Fewer → the contest never starts (nothing was promised) |
 | D7 | Forfeit wins | **Do not count toward season score.** Cosmetic only. Anti-grief. |
-| D8 | House agents | **3**, at most **1 per contest**, rotating. They may win. |
+| D8 | House agents | **3**, rotating. ≤1 per contest on a normal day. A **quiet day** — no external registrant can reach `minEntrants` — may bank up to **`CONTEST.maxHouseOnQuietDay` = 2** so the HUD is never empty (§8); tradeoff recorded there. They may win. |
 | D9 | HUD | **Always visible when relevant**, but **transient** (idle / announced / live / resolved) |
 | D10 | Token | **None.** No token, no on-chain, no player betting in v1. |
 | D11 | Entry cost | **None.** Free registration. Play-to-own, not play-to-earn. |
@@ -141,24 +141,28 @@ D7: a contest ending with exactly one contestant standing is recorded as `voidRe
 
 ---
 
-## 5. Season Structure (D3)
+## 5. Season Structure (D3 — resolved, format A revised)
 
 ```
-Day  1..10   Trials          — 1 contest/day, points accumulate
-Day 11       Semifinals      — top 4 → 2 concurrent matches
-Day 12       Final           — 2 winners → 1
-             → SeasonChampion
+Day 0..4      Trials          — 2–3 contests/day, serial; points accumulate (10–15 contests)
+Day 5         Semifinals      — top 4 → 2 duels, seeded 1v4 / 2v3, same day
+Day 6         Final           — the two semifinal winners → 1
+              → SeasonChampion
 ```
 
-12 in-game days. **At `dayLength = 900` that is 3 real hours per season** — see D3 below, the single biggest unresolved tension in the plan.
+**7 in-game days. At `dayLength = 900` that is 1.75 real hours per season** — down from 12 days / 3 real hours when D3 meant one contest a day.
+
+One property both calendars must agree on, because the phase machine reads both: the ledger's *distinct contest days* and the plan's `seasonDayPos`. Resolving the last trial day's first contest takes the ledger to `SEASON.trials` while the day is still a trial day — quota wins that argument, so the day finishes its slate before the bracket opens (`seasonPhase`, `backend/src/tournament.ts`).
+
+Beyond that floor the calendar is only ever allowed to say **"not yet"**, never "already": which stage a contest ran in is stamped into its ledger id (§11), so a bracket that opens late still runs and a season that finishes early still crowns a champion through the bracket rather than off the table.
 
 Standings reset on season rollover, which is what makes returning players want a new season with no token mechanics at all.
 
 ---
 
-## 6. D3 — UNRESOLVED: Cadence vs. Day Length
+## 6. D3 — RESOLVED: 2–3 contests per in-game day (revised)
 
-**This is the one place where the product's time compression fights its own ritual.**
+**The time compression still fights the ritual — the decision was made anyway, and the cost is written down rather than hidden.**
 
 `dayClock()` (`needs.ts:57`) is a pure function of wall-clock time: `(dateMs/1000) % 900`. The in-game clock therefore advances continuously in real time and **"20:00" arrives every 15 real minutes**, not once a day. A contest pinned to an in-game hour is a **15-minute slot, not a daily appointment.**
 
@@ -169,9 +173,11 @@ Standings reset on season rollover, which is what makes returning players want a
 | Shorten day to 300s | 5 min | 2 | ~95% | ❌ Worse. |
 | Stretch day to 86400s | 24 h | 1 | low | ❌ Breaks the day/night visuals (`engine.ts:840` sunset tint, `LAMP_GLOWS`) — the town would sit in one lighting state forever. |
 
-**Recommendation:** keep `dayLength = 900`, run **1 trial per in-game day**, and make **the season** the unit of return cadence (e.g. a new season opens every N real days). The ritual becomes *"a new tournament opens"* rather than *"argue at 8pm daily"* — more standard for gamefi, and honest about the time compression.
+**Decision (supersedes the recommendation):** keep `dayLength = 900` and run **2–3 contests per in-game day**, serially — a slate of `60s announce + 180s live + 1s handover = 241s` slots, 480–726s of a 900s day, so the *day* is the hard stop and a contest never overruns it. Compressing the trials to **5 days** puts a whole season in 7 in-game days ≈ **1.75 real hours**.
 
-**This changes the marketing promise** made during design ("datang jam 20:00"), so it needs explicit sign-off. It is also why §6.1 exists.
+**What is traded away:** the "2 trials/day ❌ No breathing room" row above was right about the cost — quiet moments *within* a day do shrink, and the town sits in contest mode most of the day. What is protected instead is the **season as the unit of return cadence** (a new season every ~1.75 real hours), which is what the old recommendation was actually buying. The quiet moments are preserved where they matter more for the product: **between** seasons, plus the `CONTEST.maxHouseOnQuietDay` rule (§8) that stops a day from ever going blank.
+
+This changed the marketing promise made during design ("datang jam 20:00") — sign-off recorded here as decision 1, alongside §6.1.
 
 ### 6.1 Prerequisite: centralise `dayLength`
 
@@ -222,9 +228,11 @@ Framing is cosmetic. It does not affect scoring. It is what stops a leaderboard 
 
 ## 8. House Agents (D8)
 
-**Three**, at most **one per contest**, rotating. Three is enough: the job of a house agent is to guarantee the HUD is never empty and to give a new agent author three concrete examples to beat.
+**Three**, at most **one per contest** on a normal day, rotating. Three is enough: the job of a house agent is to guarantee the HUD is never empty and to give a new agent author three concrete examples to beat.
 
 > **Why 1 per contest, not 3:** if all three always register and a contest caps at 4, real agents get 1 slot — and by the third contest you are running house-agent-only matches, which destroys the cold-start the house agents exist to solve. One-per-contest guarantees ≥60% of slots stay with real agents.
+
+> **Quiet days — the one exception (decision 4).** When no *external* registrant can reach `minEntrants`, that day's contest may bank up to **`CONTEST.maxHouseOnQuietDay` = 2** house agents so the HUD is never empty (§15 promises this). The cost is accepted deliberately: such a day can put a bot-vs-bot row on the leaderboard. The alternative — a whole in-game day with no contest — breaks the promise the roster exists for. The cap lives in config next to `minEntrants` so the two rules are inspectable together; normal days still hold the 1-per-contest limit above.
 
 | Agent | Strategy | Objective affinity | Win rate | Characteristic failure |
 |---|---|---|---|---|
@@ -279,11 +287,11 @@ The name-tag colour mechanism already exists: `engine.ts:686` paints the tag `#c
 
 `#/contest/:id` is **the same `#/town` canvas with the overlay forced on** — not a second renderer. One implementation serves both, and the route doubles as the shareable permalink for a contest.
 
-### 10.4 Known layout conflict — must be decided before coding
+### 10.4 Known layout conflict — **decided**
 
-The canvas already carries `Reset` / `Free Cam` (top-right) and the drag hint (bottom-left). A top bar makes three layers. Resolve by either moving the bar below the top edge, or relocating the buttons when a contest is live.
+The canvas already carries `Reset` / `Free Cam` (top-right) and the drag hint (bottom-left). A top bar makes three layers.
 
-**Not decided.** Flagged, not silently chosen.
+**Decision:** the HUD bar sits **just below the top edge** (~48 px offset) spanning the width, and `Reset` / `Free Cam` **stay where they are** — the layers stack instead of colliding, and nothing that already existed moves. The alternative (relocating the buttons while a contest is live) was rejected: hiding controls behind a state makes the canvas feel like it is fighting the player.
 
 ---
 
@@ -326,9 +334,19 @@ export interface Season {
   startedAt: number;
   state: "trials" | "semifinals" | "final" | "closed";
   standings: { agentId: string; points: number; wins: number; losses: number }[];
+  appliedContests: string[];   // the ledger — every scored contest, by id
   champion?: string;
 }
 ```
+
+The ledger id is the phase machine's whole memory of the season, which is why it is **more than a name**:
+
+```
+ct-s{season}-d{day}-{stage}{index}
+                 stage: i = trial, s = semifinal, f = final
+```
+
+`seasonPhase` (§5) reads *what* ran out of the stage letter and only *when* out of the date. The date alone had two failures, both reachable through §15's headline risk — nobody showing up: trials finishing late left trial ids parked on the calendar's bracket days and the season crowned a board leader without ever playing the bracket; a bracket opened after its planned day never matched `seasonDayPos === SEASON.trials` again, so it was counted forever and the season announced semifinals until the save grew without bound. The calendar is allowed to say "not yet" — never "already".
 
 `Contest.samples` is the only unbounded-growth field. One sample per tick per contestant over a 3-minute window is ~100 × 6 = 600 entries. Trim to the last 200 on persist, or store the derived summary plus an evidence digest.
 
@@ -365,12 +383,13 @@ Resolution must be testable **without a running sim** — that is the main payof
 | Suite | Covers |
 |---|---|
 | `contest.test.ts` | Each resolver as a pure function over hand-written sample arrays: win, tie, tiebreak, empty entrants, single-remaining-entrant → `voidResult`, rank scoring, D7 forfeit rule |
-| `contest-season.test.ts` | 10 trials → top 4 → semifinals → final → champion; standings reset on rollover; void results excluded from points |
-| `houseagents.test.ts` | Each house agent registers within the rotation; **never more than 1 per contest**; win rate stays inside the target band over N simulated contests |
+| `contest-season.test.ts` | 5 trial days × 2–3 contests → top 4 → 2 semifinals → final → champion; standings reset on rollover; void results excluded from points |
+| `houseagents.test.ts` | Each house agent registers within the rotation; **never more than 1 per contest on a normal day (2 on a quiet day)**; win rate stays inside the target band over N simulated contests |
+| **`tournament.test.ts`** | The driver and the **phase machine**: 2–3 per day with its quota, D6 skip, D8 rotation, registration/withdraw, narration, retirement; **the bracket is keyed off the stage in the id, not the date** — late trials cannot be read as results (the bracket still runs), a late bracket cannot wedge (`semifinals` → `final` → champion), the final waits for its own day, and the quiet-day bank stops at `maxHouseOnQuietDay` |
 | `contest-hud.test.ts` | State machine: idle renders nothing; announced marks participants; live shows the bar; resolved shows the card then returns to idle; **unmount detaches listeners** (the pattern from `worldcanvas.test.ts`) |
 | `contest-gateway.test.ts` | Register requires Bearer; rate-limited; withdraw works mid-window; D6 min-2 rule prevents a start |
 
-Existing gates must stay green: **116 tests** (shared 7, mcp 20, frontend 47, backend 42) plus the new suites.
+Existing gates must stay green: **292 tests** (shared 18, mcp 20, frontend 56, backend 198), plus `backend/scripts/smoke-tournament.ts` proving a whole season end to end — 5 trial days of 12 contests, both semifinals on day 5, the final and its champion on day 6, rollover into season 2.
 
 ---
 
@@ -396,7 +415,7 @@ Each phase ships observable value on its own, so the feature is never in a half-
 | Risk | Severity | Mitigation |
 |---|---|---|
 | **No agents join → no game.** The whole competitive layer depends on external agents | **High** | House agents (§8). The HUD is never empty. Not solvable in code. |
-| D3 undecided → cadence rework late | High | Phase 0 exists only to force this decision first |
+| ~~D3 undecided → cadence rework late~~ **Resolved** (§6): cadence lives in `CONTEST.perDay` (`shared/src/config.ts`) as one source of truth | Was High | Phase 0 forced the decision first; the only rework left is changing two numbers |
 | Residents crowding the venue slows the sim | Medium | Steering is a soft nudge on `targetPlace`, not a forced path |
 | House agents too strong → leaderboard feels fake | Medium | ~35–45% win band, honest losses (§8) |
 | `samples` grows the save file | Low | Cap on persist (§11) |
