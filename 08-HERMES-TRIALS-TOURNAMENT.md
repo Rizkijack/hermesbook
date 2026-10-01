@@ -1,9 +1,8 @@
 # 08 - HERMES TRIALS (AGENT TOURNAMENT)
 
-> **Status:** PLAN — not implemented. No code in this document has been written.
+> **Status:** IMPLEMENTED — Phases 0–4 shipped on `feat/hermes-trials-tournament`. Phase 5: full gate green, formal review outstanding; see §14.
 > **Working name:** `Hermes Trials`. See §1.2 for the naming decision.
 > **Depends on:** `07-AGENT-INTEGRATION.md` (gateway + MCP are already shipped).
-> **Note:** the project folder is blocked from the write tool in Plan mode. This file must be moved to `G:\PROJECT\hermesbook\08-HERMES-TRIALS-TOURNAMENT.md` to join docs 01–07.
 
 ---
 
@@ -354,25 +353,34 @@ ct-s{season}-d{day}-{stage}{index}
 
 ## 12. Change List
 
-| File | Change | ~lines |
+| File | Change | lines |
 |---|---|---|
-| `shared/src/config.ts` | `dayLength` centralised, contest config | 15 |
-| `shared/src/types.ts` | `Contest`, `ContestSample`, `Season` | 60 |
-| **`backend/src/contest.ts`** | **NEW** — sampler, 4 resolvers, scoring, schedule, season | 340 |
-| **`backend/src/houseagents.ts`** | **NEW** — 3 bots, strategies, rotation | 180 |
-| `backend/src/agents.ts` | register / withdraw, forfeit detection on AFK | 40 |
-| `backend/src/gateway.ts` | register + withdraw routes (Bearer, rate-limited) | 45 |
-| `backend/src/server.ts` | sampler hook in the turn loop, SSE events, season rollover | 40 |
-| `backend/src/world.ts` | seed season, first contests | 30 |
-| `frontend/src/canvas/engine.ts` | contest channel, rank ring, tag colour, audience steering | 60 |
-| `frontend/src/canvas/WorldCanvas.tsx` | HUD bar, state machine, venue glow | 90 |
-| **`frontend/src/views/ContestView.tsx`** | **NEW** — `#/contest/:id` = town + forced overlay | 180 |
-| `frontend/src/router/hash.ts` | route | 10 |
-| `backend/test/contest.test.ts` | **NEW** — resolvers as pure functions over fixtures | 250 |
-| `backend/test/houseagents.test.ts` | **NEW** | 120 |
-| `frontend/test/contest-hud.test.ts` | **NEW** — HUD state machine via DOM | 180 |
+| `shared/src/config.ts` | `dayLength` centralised (§6.1), `CONTEST` / `SEASON` / `CONTEST_VENUES` | 151 |
+| `shared/src/types.ts` | `Contest`, `ContestSample`, `ContestResult`, `Season`, `Edition` | 107 |
+| **`shared/test/config.test.ts`** | **NEW** — cadence and quota table | 70 |
+| **`backend/src/contest.ts`** | **NEW** — sampler, 4 resolvers, scoring, `trimSamples` | 386 |
+| **`backend/src/season.ts`** | **NEW** — season ledger, standings, qualifiers, champion | 245 |
+| **`backend/src/tournament.ts`** | **NEW** — driver: announce / register / withdraw, **phase machine**, retirement, narration, quiet-day fill | 964 |
+| **`backend/src/houseagents.ts`** | **NEW** — 3 bots, strategies, rotation | 297 |
+| `backend/src/gateway.ts` | the three §7 routes (Bearer, rate-limited) | 73 |
+| `backend/src/server.ts` | `tickTournament` in the turn loop + SSE events | 32 |
+| `backend/src/world.ts` | seed the season; **Phase 4** — `generateEdition` cites the newest result | 82 |
+| `backend/src/needs.ts`, `backend/src/turn.ts` | `dayLength` from `shared` (§6.1) | 8 |
+| `frontend/src/canvas/engine.ts` | contest channel, rank ring, tag colour, audience steering (§9) | 120 |
+| `frontend/src/canvas/WorldCanvas.tsx` | HUD bar, D9 state machine, venue glow, §10.4 offset | 200 |
+| **`frontend/src/views/ContestView.tsx`** | **NEW** — `#/contest/:id` = town + forced overlay (§10.3) | 208 |
+| `frontend/src/App.tsx` | import + case + route list (3 lines) | 4 |
+| **`backend/test/contest.test.ts`** | **NEW** — resolvers as pure functions over fixtures | 569 |
+| **`backend/test/houseagents.test.ts`** | **NEW** | 505 |
+| **`backend/test/contest-season.test.ts`** | **NEW** — trial days → bracket → champion → rollover | 504 |
+| **`backend/test/tournament.test.ts`** | **NEW** — driver and the **phase machine**, incl. the stage-in-id regressions (§11) | 846 |
+| **`backend/test/contest-gateway.test.ts`** | **NEW** — Bearer, rate limit, withdraw, D6 | 250 |
+| `backend/test/world.test.ts` | edition cites the newest result; void flagged as no points (Phase 4) | +140 |
+| **`frontend/test/contest-hud.test.ts`** | **NEW** — HUD state machine via DOM, route, steering (§9, §10) | 348 |
+| **`backend/scripts/smoke-contest.ts`**, **`smoke-tournament.ts`** | **NEW** — a whole season end to end, no running sim | 488 |
+| `mcp/src/tools.ts` | `dayLength` from `shared` | 7 |
 
-**Total ≈ 1,640 lines** — roughly 3–5 days of focused work. This is not a weekend-sized feature; the phases in §14 exist so each ships value on its own.
+**Actual ≈ 6,400 lines across 26 files** — about four times the 1,640 estimated here. The difference is the phase machine and its regression tests: §15's headline risk (nobody showing up) turned "read the phase off the calendar" into "stamp it into the ledger id", and that alone is `tournament.ts` + `tournament.test.ts`.
 
 ---
 
@@ -388,8 +396,9 @@ Resolution must be testable **without a running sim** — that is the main payof
 | **`tournament.test.ts`** | The driver and the **phase machine**: 2–3 per day with its quota, D6 skip, D8 rotation, registration/withdraw, narration, retirement; **the bracket is keyed off the stage in the id, not the date** — late trials cannot be read as results (the bracket still runs), a late bracket cannot wedge (`semifinals` → `final` → champion), the final waits for its own day, and the quiet-day bank stops at `maxHouseOnQuietDay` |
 | `contest-hud.test.ts` | State machine: idle renders nothing; announced marks participants; live shows the bar; resolved shows the card then returns to idle; **unmount detaches listeners** (the pattern from `worldcanvas.test.ts`) |
 | `contest-gateway.test.ts` | Register requires Bearer; rate-limited; withdraw works mid-window; D6 min-2 rule prevents a start |
+| `world.test.ts` | The edition cites the newest resolved contest (Phase 4): winner in the headline, top three in the lead story, a void result reported as *no points* (D7), and **no** contest story at all when nothing has resolved — the paper never invents a result |
 
-Existing gates must stay green: **292 tests** (shared 18, mcp 20, frontend 56, backend 198), plus `backend/scripts/smoke-tournament.ts` proving a whole season end to end — 5 trial days of 12 contests, both semifinals on day 5, the final and its champion on day 6, rollover into season 2.
+Existing gates must stay green: **296 tests** (shared 18, mcp 20, frontend 56, backend 202), plus `backend/scripts/smoke-tournament.ts` proving a whole season end to end — 5 trial days of 12 contests, both semifinals on day 5, the final and its champion on day 6, rollover into season 2.
 
 ---
 
@@ -408,6 +417,16 @@ Each phase ships observable value on its own, so the feature is never in a half-
 
 **Phases 1–2 are invisible.** Intentional: it is the only way to test resolution deterministically before any rendering exists, and it means the risky logic lands before any pixel is drawn.
 
+**Status, 2026-10-01:**
+
+| Phase | State |
+|---|---|
+| 0–2 | Shipped — `e1e5b20`, `37de2d1`, `74c596d` |
+| 3 | Shipped — `857693c` (HUD, markers, steering, `ContestView`), `04e58e9` (route case in `App.tsx`, staged selectively so a parallel agent's label change in the same file stayed theirs) |
+| **Phase-machine fix** | Shipped — `ae98226`: the stage is stamped into the ledger id (§11), so a late trial cannot be read as a bracket result and a late bracket cannot wedge. Two reviewer repro tests became permanent tests first (red, then green). |
+| 4 | Shipped — `generateEdition` leads with the newest resolved contest and flags a void result as no points; `world.test.ts` covers all four branches including the fallback |
+| 5 | **Gate green**: `pnpm -r build`, `tsc -p tsconfig.test.json`, **296 tests**, smoke season end-to-end. **Formal review still outstanding** — the reviewer process returned no output on two attempts, so correctness rests on the red→green regressions, the full gate and the smoke rather than on a signed-off verdict. |
+
 ---
 
 ## 15. Risks
@@ -419,7 +438,7 @@ Each phase ships observable value on its own, so the feature is never in a half-
 | Residents crowding the venue slows the sim | Medium | Steering is a soft nudge on `targetPlace`, not a forced path |
 | House agents too strong → leaderboard feels fake | Medium | ~35–45% win band, honest losses (§8) |
 | `samples` grows the save file | Low | Cap on persist (§11) |
-| Rotation of `main` with a parallel agent | Process | The working tree currently has **14+ uncommitted files owned by another agent**. Get a branch before starting. |
+| Rotation of `main` with a parallel agent | Process | ~~"the working tree has 14+ uncommitted files owned by another agent"~~ **Resolved**: this feature is on `feat/hermes-trials-tournament`, committed per scope, and `App.tsx` was staged hunk-by-hunk so the parallel agent's work was never taken over. Their UI-English translation (`App.tsx` labels, `QuestView`, `TownView`, `quests.ts`, `locations.ts`) stays unstaged for them to commit — until it lands, HEAD still has Indonesian strings in those five files while the working tree is 100% English. |
 
 ---
 
