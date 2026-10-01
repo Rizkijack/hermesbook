@@ -2,7 +2,7 @@ import type { TownSnapshot, Quest } from "@hermesbook/shared";
 import { WorldCanvas } from "../canvas/WorldCanvas.js";
 import { Link } from "../router/hash.js";
 
-export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?: (id: string) => void }) {
+export function TownView({ snapshot, onPick, onFollowChange }: { snapshot: TownSnapshot; onPick?: (id: string) => void; onFollowChange?: (id: string | null) => void }) {
   const counts = new Map<string, number>();
   for (const h of snapshot.herd) counts.set(h.mind.doing.place, (counts.get(h.mind.doing.place) ?? 0) + 1);
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
@@ -13,7 +13,7 @@ export function TownView({ snapshot, onPick }: { snapshot: TownSnapshot; onPick?
 
   return (
     <div className="stagger">
-      <WorldCanvas snapshot={snapshot} onPick={onPick} />
+      <WorldCanvas snapshot={snapshot} onPick={onPick} onFollowChange={onFollowChange} />
 
       {/* halaman — bento editorial, not 3 equal cards */}
       <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>

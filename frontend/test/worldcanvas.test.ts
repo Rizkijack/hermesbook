@@ -79,8 +79,8 @@ function xfOf(): any {
 let host: HTMLDivElement;
 let root: Root;
 
-function mount(snapshot: Snap) {
-  act(() => { root.render(createElement(WorldCanvas, { snapshot })); });
+function mount(snapshot: Snap, props: Partial<Parameters<typeof WorldCanvas>[0]> = {}) {
+  act(() => { root.render(createElement(WorldCanvas, { snapshot, ...props })); });
 }
 
 function canvasOf(): HTMLCanvasElement {
@@ -350,5 +350,51 @@ describe("WorldCanvas camera", () => {
     expect(canvas.width).toBe(width);
 
     root = createRoot(host); // re-mount so afterEach can unmount cleanly
+  });
+});
+
+describe("follow agrees with the HUD", () => {
+  it("lets go when open ground is tapped, and says so", () => {
+    const seen: Array<string | null> = [];
+    mount(snap(), { onFollowChange: (id) => seen.push(id) });
+    const xf = xfOf();
+    const canvas = canvasOf();
+
+    act(() => { xf.setFollow("a1"); });
+    expect(seen).toEqual(["a1"]);
+
+    // the corner farthest from the only resident — outside the 44px pick radius
+    const a = xf.byId.get("a1");
+    const ax = (a.x - xf.cam.x) * xf.cam.zoom + VIEW_W / 2;
+    const ay = (a.y - xf.cam.y) * xf.cam.zoom + VIEW_H / 2;
+    const corners = [[10, 10], [VIEW_W - 10, 10], [10, VIEW_H - 10], [VIEW_W - 10, VIEW_H - 10]];
+    const [px, py] = corners.reduce((best, c) =>
+      Math.hypot(c[0] - ax, c[1] - ay) > Math.hypot(best[0] - ax, best[1] - ay) ? c : best);
+    expect(Math.hypot(px - ax, py - ay)).toBeGreaterThan(44);
+
+    act(() => { canvas.dispatchEvent(pe("pointerdown", px, py)); });
+    act(() => { canvas.dispatchEvent(pe("pointerup", px, py)); });
+
+    expect(xf.followId).toBeNull();
+    expect(seen[seen.length - 1]).toBeNull();
+  });
+
+  it("mirrors Free Cam to the HUD instead of leaving a stale \"Following\"", () => {
+    const seen: Array<string | null> = [];
+    mount(snap(), { onFollowChange: (id) => seen.push(id) });
+    const xf = xfOf();
+
+    act(() => { xf.setFollow("a1"); });
+    expect(seen).toEqual(["a1"]);
+
+    act(() => { xf.setFollow(null); }); // the Free Cam button
+    expect(seen).toEqual(["a1", null]);
+
+    // and the camera stops dead where the player can see it — no residual
+    // glide toward the resident that was just released
+    const frozen = xf.cam.tx;
+    act(() => { for (let i = 0; i < 120; i++) xf.tick(1 / 60); });
+    expect(xf.cam.tx).toBe(frozen);
+    expect(xf.cam.x).toBe(frozen);
   });
 });

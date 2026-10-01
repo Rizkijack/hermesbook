@@ -148,12 +148,15 @@ function ContestHud({ contest, phase, herd, now }: {
 export function WorldCanvas({
   snapshot,
   onPick,
+  onFollowChange,
 }: {
   snapshot: {
     herd: Array<{ id: string; name: string; handle: string; genes: string; mind: { doing: { place: string; act: string } }; born: number }>;
     contests?: Contest[];
   };
   onPick?: (id: string) => void;
+  /** Fired on every follow change, so the HUD can mirror the engine exactly. */
+  onFollowChange?: (id: string | null) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const xfRef = useRef<Xf | null>(null);
@@ -161,6 +164,7 @@ export function WorldCanvas({
   // snapshot push can never rebuild (and re-centre) the camera.
   const initialRef = useRef(snapshot);
   const onPickRef = useRef(onPick);
+  const onFollowChangeRef = useRef(onFollowChange);
 
   // --- contest channel (08 §10.1 / §10.3) ---------------------------------
   // The route forces a specific contest; everywhere else the HUD follows the
@@ -202,13 +206,16 @@ export function WorldCanvas({
 
   useEffect(() => {
     onPickRef.current = onPick;
-  }, [onPick]);
+    onFollowChangeRef.current = onFollowChange;
+  }, [onPick, onFollowChange]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     const xf = new Xf(initialRef.current);
     xfRef.current = xf;
+    // every follow change — pick, Free Cam, Escape, drag — reaches the HUD here
+    xf.onFollow = (id) => onFollowChangeRef.current?.(id);
 
     // attach to global for SSE handlers (simple)
     (window as unknown as Record<string, unknown>).__hermes_xf = xf;
@@ -264,6 +271,10 @@ export function WorldCanvas({
       if (best) {
         xf.setFollow(best);
         onPickRef.current?.(best);
+      } else {
+        // Open ground lets go: a tap is the counterpart of Free Cam, so the
+        // camera is never stuck on a resident the player tapped by accident.
+        xf.setFollow(null);
       }
     };
 
@@ -382,6 +393,7 @@ export function WorldCanvas({
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      xf.onFollow = null;
       window.removeEventListener("resize", applySize);
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);

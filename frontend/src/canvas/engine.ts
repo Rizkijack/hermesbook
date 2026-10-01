@@ -82,6 +82,8 @@ export class Xf {
   puffs: Puff[] = [];
   bubbles: SpeechBubble[] = [];
   followId: string | null = null;
+  /** Fires on every follow change; WorldCanvas forwards it to the HUD. */
+  onFollow: ((id: string | null) => void) | null = null;
   /** current Hermes Trials contest, or null on a quiet day (08 §10.1) */
   contest: ContestMark | null = null;
   private t = 0;
@@ -127,8 +129,23 @@ export class Xf {
     }
   }
 
-  setFollow(id: string | null) {
+  /**
+   * Follow mode — and the single door every release walks through: Free Cam,
+   * Escape, a pan, a zoom, a tap on open ground, the resident leaving town.
+   *
+   * Releasing stops the camera dead where the player can see it instead of
+   * letting it keep easing toward the last target, and it reports the change,
+   * so the HUD can never claim a follow the engine already dropped (or miss
+   * one it just picked up).
+   */
+  setFollow(id: string | null): void {
+    const prev = this.followId;
     this.followId = id;
+    if (id === null && prev !== null) {
+      this.cam.tx = this.cam.x;
+      this.cam.ty = this.cam.y;
+    }
+    if (prev !== id) this.onFollow?.(id);
   }
 
   /**
@@ -174,14 +191,15 @@ export class Xf {
     this.cam.ty -= dyScreen / z;
     this.cam.x = this.cam.tx;
     this.cam.y = this.cam.ty;
-    this.followId = null;
+    this.setFollow(null);
     this.clampCam();
   }
 
   /**
    * Zoom by `factor` anchored on a canvas-relative screen point: the world
-   * point under that point stays put (unless clampCam pulls it back inside the
-   * map). Applied instantly so the anchor cannot drift between zoom targets.
+   * point under that point stays put. Applied instantly so the anchor cannot
+   * drift between zoom targets. Zoom never moves the camera on its own — the
+   * anchor shifts it by however much the cursor sat off-centre, and no more.
    */
   zoomAt(sx: number, sy: number, factor: number): void {
     if (!Number.isFinite(factor) || factor <= 0) return;
@@ -199,35 +217,36 @@ export class Xf {
     cam.ty = wy - oy / z1;
     cam.x = cam.tx;
     cam.y = cam.ty;
-    this.followId = null;
+    this.setFollow(null);
     this.clampCam();
   }
 
   /**
-   * Keep the viewport over the town instead of letting it drift into empty
-   * space. When the view is wider than the world (zoomed out past the map) the
-   * camera is pinned to the world centre.
+   * The one rule the camera never breaks: its centre stays over the town.
+   *
+   * The bounds are deliberately independent of zoom. A zoom-dependent band
+   * shrinks as you zoom out, so clamping against it used to yank the camera
+   * back toward the middle of the map — measured in Chrome at 752,9 world px
+   * (2744 → 1991) panning the east edge at zoom 1 down to MIN_ZOOM. With fixed
+   * bounds zooming only changes what you see, never where the camera is, and a
+   * pan stops against a wall instead of springing back to a band around the
+   * centre.
+   *
+   * Keeping the centre on the map is what bounds the emptiness: at least half
+   * the viewport always shows town, and the rest is open field in the same
+   * colour as the ground.
    */
   clampCam(): void {
     const cam = this.cam;
-    const z = cam.zoom || 1;
-    const halfW = this.viewW / (2 * z);
-    const halfH = this.viewH / (2 * z);
-    const cx = this.worldW / 2;
-    const cy = this.worldH / 2;
-    const loX = Math.min(cx, halfW);
-    const hiX = Math.max(cx, this.worldW - halfW);
-    const loY = Math.min(cy, halfH);
-    const hiY = Math.max(cy, this.worldH - halfH);
-    cam.tx = Math.max(loX, Math.min(hiX, cam.tx));
-    cam.ty = Math.max(loY, Math.min(hiY, cam.ty));
-    cam.x = Math.max(loX, Math.min(hiX, cam.x));
-    cam.y = Math.max(loY, Math.min(hiY, cam.y));
+    cam.tx = Math.max(0, Math.min(this.worldW, cam.tx));
+    cam.ty = Math.max(0, Math.min(this.worldH, cam.ty));
+    cam.x = Math.max(0, Math.min(this.worldW, cam.x));
+    cam.y = Math.max(0, Math.min(this.worldH, cam.y));
   }
 
   /** Back to the town overview, follow dropped. */
   resetCam(): void {
-    this.followId = null;
+    this.setFollow(null);
     this.cam.x = this.cam.tx = CAM_HOME_X;
     this.cam.y = this.cam.ty = CAM_HOME_Y;
     this.cam.zoom = this.cam.tz = 1;
@@ -433,7 +452,7 @@ export class Xf {
         this.cam.tx = f.x;
         this.cam.ty = f.y;
       } else {
-        this.followId = null; // followed agent left the herd — stop chasing
+        this.setFollow(null); // followed agent left the herd — stop chasing
       }
     }
     this.clampCam();

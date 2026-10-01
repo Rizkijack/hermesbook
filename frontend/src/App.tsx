@@ -63,6 +63,14 @@ export default function App() {
 
   const { page, arg } = route;
 
+  // The footer mirrors the engine, so "clear" has to release follow there too:
+  // wiping only the label left the camera chasing a resident nobody claimed.
+  const releaseFollow = () => {
+    const xf = (window as unknown as { __hermes_xf?: { setFollow: (id: string | null) => void } }).__hermes_xf;
+    xf?.setFollow(null);
+    setFollowPick(null);
+  };
+
   return (
     <>
       <header className="masthead">
@@ -89,7 +97,7 @@ export default function App() {
       </header>
 
       <main className={"page" + (isTurning ? " turning" : "")}>
-        {page === "town" && <TownView snapshot={state} onPick={(id) => setFollowPick(id)} />}
+        {page === "town" && <TownView snapshot={state} onFollowChange={setFollowPick} />}
         {page === "herd" && <HerdView snapshot={state} />}
         {page === "feed" && <FeedView snapshot={state} />}
         {page === "paper" && <PaperView snapshot={state} />}
@@ -108,7 +116,7 @@ export default function App() {
 
       <footer className="mono" style={{ textAlign: "center", padding: "18px 24px", fontSize: 11, color: "var(--faint)", borderTop: "1px solid var(--hair)", marginTop: 24 }}>
         Hermesbook · Base · 210×128 tiles · Dual-Brain Sim fallback · Built from Llamabook reverse engineering
-        {followPick && <span style={{ marginLeft: 12 }}>Following <strong>{state.herd.find((h) => h.id === followPick)?.name ?? followPick.slice(0, 8)}</strong> · <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 10 }} onClick={() => setFollowPick(null)}>clear</button></span>}
+        {followPick && <span style={{ marginLeft: 12 }}>Following <strong>{state.herd.find((h) => h.id === followPick)?.name ?? followPick.slice(0, 8)}</strong> · <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 10 }} onClick={releaseFollow}>clear</button></span>}
       </footer>
     </>
   );
