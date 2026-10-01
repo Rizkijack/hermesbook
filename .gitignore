@@ -9,5 +9,6 @@ data/town.tmp.*
 frontend/dist
 backend/dist
 shared/dist
+*.tsbuildinfo
 .DS_Store
 .vercel
