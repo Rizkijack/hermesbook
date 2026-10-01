@@ -1,4 +1,4 @@
-import type { TownSnapshot, Resident, Post, TownEvent, Edition, Project, Faction, Quest } from "@hermesbook/shared";
+import type { TownSnapshot, Resident, Post, TownEvent, Edition, Project, Faction, Quest, Contest } from "@hermesbook/shared";
 import { defaultConfig } from "@hermesbook/shared";
 import { Hc } from "@hermesbook/shared";
 import { seededRandom } from "@hermesbook/shared";
@@ -196,6 +196,58 @@ export function generateWeatherEvent(): TownEvent {
   return { t: Date.now(), kind: "weather", text: WEATHERS[Math.floor(Math.random() * WEATHERS.length)]! };
 }
 
+function residentName(world: TownSnapshot, agentId: string): string {
+  return world.herd.find((h) => h.id === agentId)?.name ?? agentId.slice(0, 8);
+}
+
+/**
+ * The newest contest that actually produced a result — what the Daily Spit
+ * cites (08 §2.1). The snapshot only ever carries the open window plus the
+ * last few resolved cards (`KEEP_RESOLVED` in tournament.ts), so this walks a
+ * handful of rows at most, and it returns nothing rather than a contest with
+ * no `result`: a card that was announced and never scored is not a story.
+ */
+function latestResolvedContest(world: TownSnapshot): Contest | undefined {
+  let newest: Contest | undefined;
+  for (const c of world.contests ?? []) {
+    if (c.state !== "resolved" || !c.result) continue;
+    if (!newest || c.result.resolvedAt > (newest.result?.resolvedAt ?? 0)) newest = c;
+  }
+  return newest;
+}
+
+/**
+ * The headline the contest earns, in the paper's own voice: the winner and
+ * what they won. A void result (D7, 08 §4.3) says so in the same sentence —
+ * the win is real narratively, worth nothing on the table, and a headline
+ * that let those two read as one thing would misreport the season.
+ */
+function contestHeadline(world: TownSnapshot, c: Contest): string {
+  const result = c.result!;
+  const top = result.standings.find((s) => s.rank === 1) ?? result.standings[0];
+  const who = top ? residentName(world, top.agentId) : "Nobody";
+  const what = c.title.toLowerCase();
+  if (result.voidResult) return `${who} won ${what} by forfeit — no points`;
+  return `${who} wins ${what}`;
+}
+
+/** The Trials column: the framing the matchup was announced with, then the board. */
+function contestStory(world: TownSnapshot, c: Contest): { head: string; text: string } {
+  const result = c.result!;
+  const board =
+    [...result.standings]
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, 3)
+      .map((s) => {
+        const score = result.voidResult ? 0 : s.score;
+        return `${s.rank}. ${residentName(world, s.agentId)} ${score}${s.detail ? ` — ${s.detail}` : ""}`;
+      })
+      .join("  ·  ") || "nobody took the field";
+  const verdict = result.voidResult ? " Scored as a forfeit, so no season points." : "";
+  const lead = c.narration || `${c.title} has closed.`;
+  return { head: "The Trials", text: `${lead} ${board}.${verdict}` };
+}
+
 export function generateEdition(world: TownSnapshot): Edition {
   const no = (world.editions[0]?.no ?? 0) + 1;
   const rng = Math.random;
@@ -203,10 +255,21 @@ export function generateEdition(world: TownSnapshot): Edition {
   const b = world.herd[Math.floor(rng() * world.herd.length)];
   const verb = HEADLINE_VERBS[Math.floor(rng() * HEADLINE_VERBS.length)];
   const loc = LOCS[Math.floor(rng() * LOCS.length)];
-  const headline = a && b ? `${a.name} ${verb} ${loc}. ${b.name} watched and said nothing` : `Day ${no}: ${world.herd.length} residents keep the town moving`;
+  // A finished contest outranks the town's small talk — it is the event the
+  // whole season is built out of (08 §2.1). With none resolved the edition
+  // reads exactly as it always did: the paper never invents a contest.
+  const last = latestResolvedContest(world);
+  const headline = last
+    ? contestHeadline(world, last)
+    : a && b
+      ? `${a.name} ${verb} ${loc}. ${b.name} watched and said nothing`
+      : `Day ${no}: ${world.herd.length} residents keep the town moving`;
   const standfirst = `${world.herd.length} residents in the field. ${world.feed.length} things said, and ${world.events.length} town events entered into the book. ${world.projects[0] ? `${world.projects[0].name} at ${Math.round(world.projects[0].progress * 100)}%.` : ""}`;
   const recentFeed = world.feed.slice(0, 3).map((p) => p.text).join(" ") || "Nothing moved all morning.";
   const stories = [
+    // lead with the contest when there is one; the two standing columns keep
+    // their places behind it
+    ...(last ? [contestStory(world, last)] : []),
     { head: "About the town", text: recentFeed.slice(0, 180) || "First frost. Nobody moved all morning." },
     { head: "Public works", text: world.projects[0] ? `${world.projects[0].name} — ${world.projects[0].purpose} — ${Math.round(world.projects[0].progress * 100)}%. Sponsors: ${world.projects[0].sponsors.length}.` : "The fence still stands where it was." },
   ];

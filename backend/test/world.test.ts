@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { Contest } from "@hermesbook/shared";
 import { createInitialWorld, generateEdition, generateWeatherEvent } from "../src/world.js";
 import { LOCATIONS } from "../src/locations.js";
 import { Pe, V, WorldSize } from "../src/map.js";
@@ -40,5 +41,77 @@ describe("World", () => {
     expect(ev.kind).toBe("weather");
     expect(ev.text).toBeTruthy();
     expect(ev.t).toBeGreaterThan(0);
+  });
+
+  // 08 §2.1 / Phase 4 — "contest results feed the Daily Spit". The edition
+  // used to be built entirely out of the herd and the feed, so the one event
+  // the season is made of never reached the paper.
+  const resolvedContest = (over: Partial<Contest> = {}): Contest => ({
+    id: "ct-s1-d3-i0",
+    kind: "gather_at",
+    title: "THE HALL ARGUMENT",
+    place: "square",
+    startsAt: 0,
+    endsAt: 1000,
+    state: "resolved",
+    entrants: [],
+    samples: [],
+    result: { standings: [], voidResult: false, resolvedAt: 1000 },
+    narration: "",
+    ...over,
+  });
+
+  const board = (w: ReturnType<typeof createInitialWorld>) => [
+    { agentId: w.herd[0]!.id, score: 10, rank: 1, metric: 62, detail: "at square on 62 of 90 ticks" },
+    { agentId: w.herd[1]!.id, score: 5, rank: 2, metric: 40, detail: "at square on 40 of 90 ticks" },
+    { agentId: w.herd[2]!.id, score: 1, rank: 3, metric: 9, detail: "" },
+  ];
+
+  it("leads the edition with the newest resolved contest", () => {
+    const w = createInitialWorld();
+    const older = resolvedContest({
+      id: "ct-s1-d2-i0",
+      result: { standings: board(w), voidResult: false, resolvedAt: 1000 },
+    });
+    const newer = resolvedContest({
+      id: "ct-s1-d3-i0",
+      result: { standings: board(w), voidResult: false, resolvedAt: 2000 },
+      narration: "Hux  v  Tux — never spoken",
+    });
+    w.contests = [older, newer];
+
+    const ed = generateEdition(w);
+    expect(ed.headline).toBe(`${w.herd[0]!.name} wins the hall argument`);
+    expect(ed.stories).toHaveLength(3);
+    expect(ed.stories[0]!.head).toBe("The Trials");
+    expect(ed.stories[0]!.text).toContain("never spoken");
+    expect(ed.stories[0]!.text).toContain(`1. ${w.herd[0]!.name} 10 — at square on 62 of 90 ticks`);
+    // the standing columns are kept behind it, not replaced
+    expect(ed.stories.map((s) => s.head)).toContain("Public works");
+  });
+
+  it("reports a void result as a forfeit worth no points (D7)", () => {
+    const w = createInitialWorld();
+    w.contests = [
+      resolvedContest({
+        result: { standings: board(w).slice(0, 1).map((s) => ({ ...s, score: 0 })), voidResult: true, resolvedAt: 3000 },
+      }),
+    ];
+
+    const ed = generateEdition(w);
+    expect(ed.headline).toBe(`${w.herd[0]!.name} won the hall argument by forfeit — no points`);
+    expect(ed.stories[0]!.text).toContain("1. " + w.herd[0]!.name + " 0"); // points zeroed, rank kept
+    expect(ed.stories[0]!.text).toContain("no season points");
+  });
+
+  it("keeps the town's own voice when nothing has resolved", () => {
+    const w = createInitialWorld();
+    const ed = generateEdition(w);
+    expect(ed.stories).toHaveLength(2);
+    expect(ed.stories.some((s) => s.head === "The Trials")).toBe(false);
+
+    // an announced-but-never-scored card is not a story either
+    w.contests = [resolvedContest({ state: "announced", result: undefined })];
+    expect(generateEdition(w).stories).toHaveLength(2);
   });
 });
