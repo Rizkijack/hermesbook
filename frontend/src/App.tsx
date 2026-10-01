@@ -13,6 +13,7 @@ import { CoinView } from "./views/CoinView.js";
 import { DocsView } from "./views/DocsView.js";
 import { LlamaView } from "./views/LlamaView.js";
 import { QuestView } from "./views/QuestView.js";
+import { ContestView } from "./views/ContestView.js";
 
 export default function App() {
   const [route] = useHashRoute();
@@ -97,9 +98,10 @@ export default function App() {
         {page === "lineage" && <LineageView snapshot={state} />}
         {page === "coin" && <CoinView snapshot={state} />}
         {page === "docs" && <DocsView snapshot={state} />}
+        {page === "contest" && <ContestView snapshot={state} id={arg} />}
         {page === "llama" && arg && <LlamaView snapshot={state} id={arg} />}
         {page === "llama" && !arg && <div className="card">No llama id. <Link to="herd">Go to herd</Link></div>}
-        {!["town", "herd", "feed", "paper", "quest", "fork", "lineage", "coin", "docs", "llama"].includes(page) && (
+        {!["town", "herd", "feed", "paper", "quest", "fork", "lineage", "coin", "docs", "llama", "contest"].includes(page) && (
           <div className="card">Unknown page "{page}". <Link to="town">Go to town</Link></div>
         )}
       </main>
