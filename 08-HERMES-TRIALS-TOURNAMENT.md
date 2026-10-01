@@ -1,6 +1,6 @@
 # 08 - HERMES TRIALS (AGENT TOURNAMENT)
 
-> **Status:** IMPLEMENTED — Phases 0–4 shipped on `feat/hermes-trials-tournament`. Phase 5: full gate green, formal review outstanding; see §14.
+> **Status:** IMPLEMENTED — Phases 0–5 shipped on `feat/hermes-trials-tournament`. Gate green (297 tests + smoke season), code review **Approve**; see §14.
 > **Working name:** `Hermes Trials`. See §1.2 for the naming decision.
 > **Depends on:** `07-AGENT-INTEGRATION.md` (gateway + MCP are already shipped).
 
@@ -398,7 +398,7 @@ Resolution must be testable **without a running sim** — that is the main payof
 | `contest-gateway.test.ts` | Register requires Bearer; rate-limited; withdraw works mid-window; D6 min-2 rule prevents a start |
 | `world.test.ts` | The edition cites the newest resolved contest (Phase 4): winner in the headline, top three in the lead story, a void result reported as *no points* (D7), and **no** contest story at all when nothing has resolved — the paper never invents a result |
 
-Existing gates must stay green: **296 tests** (shared 18, mcp 20, frontend 56, backend 202), plus `backend/scripts/smoke-tournament.ts` proving a whole season end to end — 5 trial days of 12 contests, both semifinals on day 5, the final and its champion on day 6, rollover into season 2.
+Existing gates must stay green: **297 tests** (shared 18, mcp 20, frontend 56, backend 203), plus `backend/scripts/smoke-tournament.ts` proving a whole season end to end — 5 trial days of 12 contests, both semifinals on day 5, the final and its champion on day 6, rollover into season 2.
 
 ---
 
@@ -425,7 +425,7 @@ Each phase ships observable value on its own, so the feature is never in a half-
 | 3 | Shipped — `857693c` (HUD, markers, steering, `ContestView`), `04e58e9` (route case in `App.tsx`, staged selectively so a parallel agent's label change in the same file stayed theirs) |
 | **Phase-machine fix** | Shipped — `ae98226`: the stage is stamped into the ledger id (§11), so a late trial cannot be read as a bracket result and a late bracket cannot wedge. Two reviewer repro tests became permanent tests first (red, then green). |
 | 4 | Shipped — `generateEdition` leads with the newest resolved contest and flags a void result as no points; `world.test.ts` covers all four branches including the fallback |
-| 5 | **Gate green**: `pnpm -r build`, `tsc -p tsconfig.test.json`, **296 tests**, smoke season end-to-end. **Formal review still outstanding** — the reviewer process returned no output on two attempts, so correctness rests on the red→green regressions, the full gate and the smoke rather than on a signed-off verdict. |
+| 5 | **Gate green**: `pnpm -r build`, `tsc -p tsconfig.test.json`, **297 tests**, smoke season end-to-end. **Formal review: Approve** — with two Minor findings fixed in the same pass (an empty board now reads "Nobody took the field …" instead of "Nobody won … by forfeit", and the D6 resolve-without-result path is pinned by test). Earlier "reviewer returned no output" attempts are recorded here rather than hidden. |
 
 ---
 
