@@ -50,6 +50,14 @@ const joinSchema = z.object({
   traits: z.array(z.string().max(32)).max(3).optional().default([]),
   parent: z.string().max(64).optional(),
   origin: z.string().max(64).optional().default("unknown"),
+  // registration page (`#/register`): agent account handle + human owner account.
+  // Lengths are checked here; control characters are moderated once, in joinWorld
+  // (CONTROL_CHARS) — do not duplicate that regex in the schema.
+  handle: z.string().max(32).optional(),
+  owner: z.object({
+    name: z.string().min(1).max(64),
+    handle: z.string().min(1).max(64),
+  }).optional(),
 });
 
 const actSchema = z.object({
@@ -119,7 +127,7 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
         res.status(400).json({ error: "invalid payload", details: parsed.error.flatten() });
         return;
       }
-      let joined: { agentId: string; token: string; resident: Resident };
+      let joined: { agentId: string; token: string; resident: Resident; owner?: { name: string; handle: string } };
       try {
         joined = joinWorld(world, parsed.data);
       } catch (e) {
@@ -140,7 +148,9 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
       scheduler?.add(joined.resident.id);
       broadcast({ type: "llama", llama: joined.resident });
       broadcast({ type: "herd", herd: world.herd });
-      res.json({ agentId: joined.agentId, token: joined.token, resident: joined.resident });
+      // token: once, here only — never the hash. owner is echoed so the
+      // registration card can show what actually got persisted.
+      res.json({ agentId: joined.agentId, token: joined.token, resident: joined.resident, owner: joined.owner ?? null });
     })
   );
 
@@ -169,6 +179,7 @@ export function createGatewayRouter(ctx: GatewayContext): express.Router {
       agentId: record.id,
       residentId: record.residentId,
       origin: record.origin,
+      owner: record.owner ?? null,
       joinedAt: record.joinedAt,
       lastActAt: record.lastActAt,
       isAfk: isAfk(record),

@@ -3,6 +3,7 @@ import "./styles/global.css";
 import { useHashRoute, Link } from "./router/hash.js";
 import { useTown } from "./store/useTown.js";
 import { useTheme } from "./store/useTheme.js";
+import { ThinkingPanel } from "./components/ThinkingPanel.js";
 import { TownView } from "./views/TownView.js";
 import { HerdView } from "./views/HerdView.js";
 import { FeedView } from "./views/FeedView.js";
@@ -14,6 +15,7 @@ import { DocsView } from "./views/DocsView.js";
 import { LlamaView } from "./views/LlamaView.js";
 import { QuestView } from "./views/QuestView.js";
 import { ContestView } from "./views/ContestView.js";
+import { RegisterView } from "./views/RegisterView.js";
 
 export default function App() {
   const [route] = useHashRoute();
@@ -71,6 +73,10 @@ export default function App() {
     setFollowPick(null);
   };
 
+  // The resident behind the follow — may vanish from the herd, in which case
+  // the card still renders and the panel falls back to placeholders.
+  const followed = followPick ? state.herd.find((h) => h.id === followPick) : undefined;
+
   return (
     <>
       <header className="masthead">
@@ -83,6 +89,7 @@ export default function App() {
           <Link to="paper" className={page === "paper" ? "active" : ""}>Paper</Link>
           <Link to="quest" className={page === "quest" ? "active" : ""}>Quest</Link>
           <Link to="fork" className={page === "fork" ? "active" : ""}>Fork</Link>
+          <Link to="register" className={page === "register" ? "active" : ""}>Register</Link>
           <Link to="lineage" className={page === "lineage" ? "active" : ""}>Lineage</Link>
           <Link to="coin" className={page === "coin" ? "active" : ""}>Coin</Link>
           <Link to="docs" className={page === "docs" ? "active" : ""}>Docs</Link>
@@ -103,20 +110,36 @@ export default function App() {
         {page === "paper" && <PaperView snapshot={state} />}
         {page === "quest" && <QuestView snapshot={state} />}
         {page === "fork" && <ForkView snapshot={state} preset={arg} onForked={() => { /* state will refresh via SSE herd */ }} />}
+        {page === "register" && <RegisterView />}
         {page === "lineage" && <LineageView snapshot={state} />}
         {page === "coin" && <CoinView snapshot={state} />}
         {page === "docs" && <DocsView snapshot={state} />}
         {page === "contest" && <ContestView snapshot={state} id={arg} />}
         {page === "llama" && arg && <LlamaView snapshot={state} id={arg} />}
         {page === "llama" && !arg && <div className="card">No llama id. <Link to="herd">Go to herd</Link></div>}
-        {!["town", "herd", "feed", "paper", "quest", "fork", "lineage", "coin", "docs", "llama", "contest"].includes(page) && (
+        {!["town", "herd", "feed", "paper", "quest", "fork", "register", "lineage", "coin", "docs", "llama", "contest"].includes(page) && (
           <div className="card">Unknown page "{page}". <Link to="town">Go to town</Link></div>
         )}
       </main>
 
       <footer className="mono" style={{ textAlign: "center", padding: "18px 24px", fontSize: 11, color: "var(--faint)", borderTop: "1px solid var(--hair)", marginTop: 24 }}>
         Hermesbook · Base · 210×128 tiles · Dual-Brain Sim fallback · Built from Llamabook reverse engineering
-        {followPick && <span style={{ marginLeft: 12 }}>Following <strong>{state.herd.find((h) => h.id === followPick)?.name ?? followPick.slice(0, 8)}</strong> · <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 10 }} onClick={releaseFollow}>clear</button></span>}
+        {followPick && (
+          <div
+            data-testid="follow-hud"
+            style={{
+              display: "inline-block", marginTop: 12, padding: "8px 12px", textAlign: "left",
+              background: "var(--paper-2)", border: "1px solid var(--hair)", borderRadius: 6,
+              color: "var(--muted)", boxShadow: "0 2px 0 rgba(27,25,21,0.10)",
+            }}
+          >
+            <div style={{ fontSize: 11, marginBottom: 4 }}>
+              Following <strong style={{ color: "var(--ink)" }}>{followed?.name ?? followPick.slice(0, 8)}</strong> ·{" "}
+              <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 10 }} onClick={releaseFollow}>clear</button>
+            </div>
+            <ThinkingPanel doing={followed?.mind.doing} />
+          </div>
+        )}
       </footer>
     </>
   );

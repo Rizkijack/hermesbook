@@ -29,6 +29,13 @@ export class AgentError extends Error {
 
 // same moderation regex as /api/fork (server.ts) — shared with gateway.ts and server.ts
 export const CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/;
+/**
+ * Single-line fields (agent handle, owner account) additionally reject \t \n \r
+ * and DEL: they flow into feed lines and the HUD card, where a newline would
+ * break the row layout. Name/bio keep the laxer regex above — \n there is
+ * historical behaviour other tests rely on.
+ */
+export const SINGLE_LINE_CONTROL = /[\x00-\x1F\x7F]/;
 
 /**
  * Best-effort client IP: first x-forwarded-for entry, else req.ip.
@@ -85,12 +92,17 @@ export interface JoinInput {
   traits?: string[];
   parent?: string;
   origin?: string;
+  /** Agent account handle (registration page `#/register`). Absent → derived from the name. */
+  handle?: string;
+  /** Human owner behind the agent (registration page `#/register`). Optional for backward compatibility. */
+  owner?: { name: string; handle: string };
 }
 
 export interface JoinResult {
   agentId: string;
   token: string;
   resident: Resident;
+  owner?: { name: string; handle: string };
 }
 
 /**
@@ -109,7 +121,29 @@ export function joinWorld(world: TownSnapshot, input: JoinInput): JoinResult {
   if (bio.length > 180) throw new AgentError("bio too long");
   if (traits.length > 3) throw new AgentError("too many traits");
   if (CONTROL_CHARS.test(name + bio)) throw new AgentError("invalid characters");
+  // job/traits/origin flow into the herd broadcast — same moderation as name/bio
+  if (CONTROL_CHARS.test(job + origin + traits.join(""))) throw new AgentError("invalid characters");
+
+  // agent account handle: free-form, but bounded and clean (same moderation as name/bio)
+  const handle = (input.handle ?? "").trim();
+  if (handle.length > 32) throw new AgentError("handle must be 1-32 characters");
+  if (handle && SINGLE_LINE_CONTROL.test(handle)) throw new AgentError("invalid characters");
+
+  // owner account: validated BEFORE any world mutation, so a full pasture never
+  // masks a bad payload (same ordering rule as the name/parent checks below)
+  const owner = input.owner;
+  if (owner) {
+    if (owner.name.length < 1 || owner.name.length > 64) throw new AgentError("owner name must be 1-64 characters");
+    if (owner.handle.length < 1 || owner.handle.length > 64) throw new AgentError("owner handle must be 1-64 characters");
+    if (SINGLE_LINE_CONTROL.test(owner.name + owner.handle)) throw new AgentError("invalid characters");
+  }
+
   if (world.herd.some((h) => h.name.toLowerCase() === name.toLowerCase())) throw new AgentError("name already taken");
+  // handles resolve identity in who_is (first match wins) — a duplicate would
+  // silently impersonate, so treat it like the name: unique, case-insensitive
+  if (handle && world.herd.some((h) => (h.handle ?? "").toLowerCase() === handle.toLowerCase())) {
+    throw new AgentError("handle already taken");
+  }
 
   const parent = input.parent ? world.herd.find((h) => h.id === input.parent) : undefined;
   if (input.parent && !parent) throw new AgentError("parent not found");
@@ -128,6 +162,7 @@ export function joinWorld(world: TownSnapshot, input: JoinInput): JoinResult {
     resident = createAgentResident({ name, bio, job, traits });
   }
   resident.mind.control = "external";
+  if (handle) resident.handle = handle; // registration page: the typed agent account handle
 
   world.herd.push(resident);
   world.now = Date.now();
@@ -142,11 +177,12 @@ export function joinWorld(world: TownSnapshot, input: JoinInput): JoinResult {
     joinedAt: now,
     lastActAt: now,
   };
+  if (owner) record.owner = { name: owner.name, handle: owner.handle };
 
   world.agents ??= [];
   world.agents.push(record);
 
-  return { agentId: record.id, token, resident };
+  return { agentId: record.id, token, resident, owner: record.owner };
 }
 
 /**
