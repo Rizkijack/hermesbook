@@ -73,35 +73,42 @@ function natureFree(tx: number, ty: number): boolean {
 }
 
 // --- forest zones ----------------------------------------------------------
-const FORESTS = [
+export const FORESTS = [
   { x: 0, y: 0, w: 34, h: 34, name: "Northwest Forest" },
   { x: 176, y: 0, w: 34, h: 28, name: "Northeast Forest" },
   { x: 0, y: 84, w: 26, h: 44, name: "Southwest Forest" },
   { x: 180, y: 86, w: 30, h: 42, name: "Southeast Forest" },
+  // infill groves/woods (verified: no overlap with the 4 corner forests,
+  // ROADS, or any LOCATIONS footprint incl. the new outskirt buildings)
+  { x: 16, y: 36, w: 19, h: 23, name: "Willowbank Grove" },
+  { x: 66, y: 0, w: 17, h: 30, name: "North Central Grove" },
+  { x: 66, y: 96, w: 13, h: 32, name: "South Central Grove" },
+  { x: 132, y: 103, w: 23, h: 25, name: "Pondside Woods" },
+  { x: 197, y: 30, w: 13, h: 31, name: "East Ridge Woods" },
 ];
 
 function forestDensity(tx: number, ty: number): number {
   for (const f of FORESTS) {
-    if (tx >= f.x && tx < f.x + f.w && ty >= f.y && ty < f.y + f.h) return 0.5;
+    if (tx >= f.x && tx < f.x + f.w && ty >= f.y && ty < f.y + f.h) return 0.62;
   }
   // sparse tree belt outside town core
-  if (ty < 32 || ty > 112) return 0.14;
-  if (tx < 12 || tx > 198) return 0.14;
-  return 0.035;
+  if (ty < 32 || ty > 112) return 0.21;
+  if (tx < 12 || tx > 198) return 0.21;
+  return 0.065;
 }
 
-export interface Tree { x: number; y: number; kind: "oak" | "pine" | "bush"; s: number; }
+export interface Tree { x: number; y: number; kind: "oak" | "pine" | "bush" | "birch"; s: number; }
 
 export const TREES: Tree[] = [];
-for (let gx = 1; gx < 209; gx += 4) {
-  for (let gy = 1; gy < 127; gy += 4) {
+for (let gx = 1; gx < 209; gx += 3) {
+  for (let gy = 1; gy < 127; gy += 3) {
     const jx = gx + Math.floor(h2(gx, gy) * 3) - 1;
     const jy = gy + Math.floor(h2(gy + 7, gx) * 3) - 1;
     if (!natureFree(jx, jy)) continue;
     const r = h2(jx * 7 + 3, jy * 11 + 5);
     if (r > forestDensity(jx, jy)) continue;
-    const k = h2(jy * 5 + 1, jx * 13 + 9);
-    const kind: Tree["kind"] = k < 0.5 ? "oak" : k < 0.8 ? "pine" : "bush";
+    const k = h2(jy * 5 + 1, jx * 13 + 9) * 2; // h2 cancels the sign bit (range [0,0.5)) -> rescale to [0,1)
+    const kind: Tree["kind"] = k < 0.4 ? "oak" : k < 0.68 ? "pine" : k < 0.88 ? "bush" : "birch";
     TREES.push({ x: jx * V + 8 + (h2(jx + 2, jy + 4) - 0.5) * 8, y: jy * V + 14, kind, s: 0.8 + h2(jx, jy + 3) * 0.55 });
   }
 }
@@ -141,7 +148,7 @@ for (let x = 53; x <= 195; x += 14) PROPS.push(roadProp("pole", x, 76));
 // hand-placed street furniture on grass
 const grass: Array<[string, number, number]> = [
   ["bench", 94, 54], ["bench", 115, 54], ["bench", 94, 71], ["bench", 116, 71],
-  ["busstop", 150, 74], ["busstop", 58, 74],
+  ["busstop", 153, 74], ["busstop", 58, 74], // 150 would fall inside the inn's natureFree margin and never render
   ["mailbox", 141, 58], ["mailbox", 107, 75],
   ["hydrant", 117, 67],
   ["billboard", 160, 50],
@@ -423,6 +430,20 @@ function drawTree(ctx: CanvasRenderingContext2D, t: Tree, d: SceneDraw): void {
     ctx.beginPath(); ctx.arc(5, -4, 5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = isDark ? "#3c6234" : "#74ad66";
     ctx.beginPath(); ctx.arc(-2, -8, 4, 0, Math.PI * 2); ctx.fill();
+  } else if (t.kind === "birch") {
+    // birch: pale grey-white trunk, bright light-green canopy
+    ctx.fillStyle = isDark ? "#9a968e" : "#e8e4da";
+    ctx.fillRect(-2, -13, 4, 13);
+    ctx.fillStyle = isDark ? "#3a3630" : "#5a564e";
+    for (let i = 0; i < 3; i++) ctx.fillRect(-2, -11 + i * 4, 4, 1); // bark dashes
+    ctx.fillStyle = isDark ? "#3f7a4a" : "#7ec46a";
+    ctx.beginPath(); ctx.arc(-5, -18, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(5, -16, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -25, 8.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = isDark ? "#5a9a5f" : "#9ad884";
+    ctx.beginPath(); ctx.arc(-2, -27, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = isDark ? "rgba(170,210,175,0.16)" : "rgba(255,255,255,0.3)";
+    ctx.beginPath(); ctx.arc(-4, -28, 2.5, 0, Math.PI * 2); ctx.fill();
   } else {
     // oak
     ctx.fillStyle = isDark ? "#3a2a1a" : "#6b4a2c";

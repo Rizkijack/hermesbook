@@ -10,7 +10,7 @@ export interface Location {
   blurb: string;
 }
 
-// 26 locations per 02:30-56, coordinates tile x,y,w,h + spot
+// 26 original locations per 02:30-56 + 8 new ones (34 total), coordinates tile x,y,w,h + spot
 export const LOCATIONS: Location[] = [
   { id: "square", name: "The Square", category: "Social", x: 96, y: 55, w: 18, h: 15, spot: [104, 62], blurb: "The main gathering spot for the whole town." },
   { id: "hall", name: "The Town Hall", category: "Civic", x: 98, y: 42, w: 9, h: 6, spot: [104, 50], blurb: "Voting, public debate, and the town's only clock." },
@@ -38,6 +38,14 @@ export const LOCATIONS: Location[] = [
   { id: "trough", name: "The Trough", category: "Food", x: 94, y: 83, w: 6, h: 3, spot: [96, 84], blurb: "Oat trough at 7 a.m. Come early or go hungry." },
   { id: "fire", name: "The Fire", category: "Social", x: 108, y: 82, w: 5, h: 4, spot: [110, 84], blurb: "A night bonfire lit by nobody knows who." },
   { id: "board", name: "The Notice Board", category: "Civic", x: 103, y: 57, w: 3, h: 2, spot: [104, 58], blurb: "The notice board where townsfolk argue in writing." },
+  { id: "stables", name: "The Stables", category: "Rest", x: 86, y: 24, w: 9, h: 6, spot: [90, 31], blurb: "Horses sleep here; the llamas pretend not to care." },
+  { id: "granary", name: "The Granary", category: "Work", x: 76, y: 31, w: 8, h: 7, spot: [80, 39], blurb: "Oat reserves guarded like a state secret." },
+  { id: "warehouse", name: "The Warehouse", category: "Work", x: 118, y: 32, w: 9, h: 6, spot: [122, 39], blurb: "Storage for everything the market could not sell." },
+  { id: "chapel", name: "The Chapel", category: "Civic", x: 176, y: 56, w: 7, h: 7, spot: [179, 64], blurb: "Sunday prayers for extra grass and shorter winters." },
+  { id: "inn", name: "The Wayfarer Inn", category: "Social", x: 140, y: 68, w: 10, h: 6, spot: [145, 75], blurb: "Beds for travellers who finally stopped walking." },
+  { id: "smithy", name: "The Smithy", category: "Work", x: 162, y: 92, w: 8, h: 7, spot: [166, 100], blurb: "Horseshoes, hinges, and the occasional bent anvil." },
+  { id: "farmhouse", name: "The Farmhouse", category: "Rest", x: 80, y: 100, w: 11, h: 7, spot: [85, 108], blurb: "Where oats begin their short and noble careers." },
+  { id: "theatre", name: "The Fleece Theatre", category: "Social", x: 98, y: 101, w: 11, h: 6, spot: [103, 108], blurb: "Woolly performances nightly; the fleece always gets the last laugh." },
 ];
 
 export const LOCATION_BY_ID = new Map(LOCATIONS.map((l) => [l.id, l]));

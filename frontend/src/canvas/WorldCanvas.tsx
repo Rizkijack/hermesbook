@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Xf, RANK_COLORS, ENTRANT_COLOR, type ContestMark } from "./engine.js";
+import { Xf, RANK_COLORS, ENTRANT_COLOR, NPC_H, type ContestMark } from "./engine.js";
 import { LOCATIONS } from "./locationsData.js";
 import { parseHash } from "../router/hash.js";
 import { CONTEST, type Contest, type ContestState } from "@hermesbook/shared";
@@ -259,9 +259,12 @@ export function WorldCanvas({
       const r = canvas.getBoundingClientRect();
       const sx = clientX - r.left;
       const sy = clientY - r.top;
-      // find nearest agent by screen distance
+      // find nearest agent by screen distance. 44px was the reach for a 63px
+      // sprite; tie it to NPC_H (x2 for the name tag, floor for zoomed-out
+      // maps) so a tap near a resident still picks them without stealing taps
+      // meant for open ground
       let best: string | null = null;
-      let bestDist = 44;
+      let bestDist = Math.max(24, NPC_H * xf.cam.zoom * 2);
       for (const a of xf.byId.values()) {
         const ax = (a.x - xf.cam.x) * xf.cam.zoom + r.width / 2;
         const ay = (a.y - xf.cam.y) * xf.cam.zoom + r.height / 2;
