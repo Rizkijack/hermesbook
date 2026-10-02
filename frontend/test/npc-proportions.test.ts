@@ -8,10 +8,30 @@ import { V } from "../src/canvas/constants.js";
 import { NPC_H, NPC_SCALE } from "../src/canvas/engine.js";
 
 /**
- * The spec this guards: a resident is 1/10 of a building and 1/3 of a car.
- * drawVehicle in canvas/scenery.ts paints the body from -14 to 14.
+ * The spec this guards: a resident is 1/10 of the town's own median built
+ * structure — characteristic size = (median footprint width + median
+ * footprint height) / 2 over solid locations only (Food/Water are terrain,
+ * not buildings), divided by ten. drawVehicle in canvas/scenery.ts paints
+ * the body from -14 to 14.
  */
 const CAR_BODY = 28;
+
+/**
+ * Recompute the spec from town data, in the test's own words, so the engine
+ * can't drift from the data without this going red. Duplicating the formula
+ * here is the point: implementation and expectation meet only at LOCATIONS.
+ */
+function townNpcH(): number {
+  const built = LOCATIONS.filter((l) => l.category !== "Food" && l.category !== "Water");
+  const med = (xs: number[]): number => {
+    const s = [...xs].sort((a, b) => a - b);
+    const m = s.length >> 1;
+    return s.length % 2 === 1 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+  };
+  const w = med(built.map((l) => l.w * V));
+  const h = med(built.map((l) => l.h * V));
+  return Math.round(((w + h) / 2) / 10);
+}
 
 /** Short- and long-neck stock, so the measurement is not one pose. */
 const DNA = ["2.1.0.3.1.42.55.62.1", "2.1.0.3.1.200.55.62.1"];
@@ -29,13 +49,17 @@ function inkBox(dna: string): { top: number; bottom: number } {
   return { top, bottom };
 }
 
-describe("resident proportions — NPC = 1/10 building = 1/3 car", () => {
+describe("resident proportions — NPC = 1/10 town median = 1/3 car", () => {
+  it("NPC_H is derived from town data, not a magic number", () => {
+    expect(NPC_H, `engine ${NPC_H} vs town data ${townNpcH()}`).toBe(townNpcH());
+  });
+
   it("the blit really makes an NPC_H-tall figure", () => {
     for (const dna of DNA) {
       const { top, bottom } = inkBox(dna);
       const worldH = (bottom - top + 1) * NPC_SCALE;
-      expect(worldH, `${dna} ink ${top}..${bottom} → ${worldH}px`).toBeGreaterThan(9);
-      expect(worldH, `${dna} ink ${top}..${bottom} → ${worldH}px`).toBeLessThan(12);
+      expect(worldH, `${dna} ink ${top}..${bottom} → ${worldH}px`).toBeGreaterThanOrEqual(NPC_H - 1);
+      expect(worldH, `${dna} ink ${top}..${bottom} → ${worldH}px`).toBeLessThanOrEqual(NPC_H + 2);
     }
   });
 
@@ -49,7 +73,7 @@ describe("resident proportions — NPC = 1/10 building = 1/3 car", () => {
     }
   });
 
-  it("measures 1/10 of a building", () => {
+  it("measures 1/10 of a house-sized building", () => {
     // school = 7×4 tiles → 112×64 world px; a resident has to sit between
     // a tenth of its height and a tenth of its width
     const school = LOCATIONS.find((l) => l.id === "school");
@@ -65,9 +89,8 @@ describe("resident proportions — NPC = 1/10 building = 1/3 car", () => {
   });
 
   it("the building and car readings agree with each other", () => {
-    const school = LOCATIONS.find((l) => l.id === "school")!;
-    const buildingTenth = (school.w * V) / 10;
+    const spec = townNpcH();
     const carThird = CAR_BODY / 3;
-    expect(buildingTenth - carThird, `${buildingTenth} vs ${carThird}`).toBeLessThan(3);
+    expect(Math.abs(spec - carThird), `${spec} vs ${carThird}`).toBeLessThan(3);
   });
 });

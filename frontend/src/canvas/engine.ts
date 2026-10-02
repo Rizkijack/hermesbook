@@ -17,16 +17,29 @@ const CAM_HOME_Y = 900;
 /**
  * Resident height in world px — the proportion lock for the whole sprite.
  *
- * 1/10 of a building: the houses here are ~7×4 tiles (112×64 px), so a resident
- * is 10px — which is also 1/3 of a car (28px body + wheels ≈ 29px long, /3 ≈ 10px).
- * Both readings agree, so the number is the spec, not a taste call.
+ * Derived, not picked: 1/10 of the town's own median built structure.
+ * Characteristic size = average of the median footprint width and height
+ * over every solid location (Food/Water are terrain, not buildings), in
+ * world px, divided by ten and rounded. Today that is
+ * ((128 + 80) / 2) / 10 = 10.4 → 10px — which also lands within a pixel
+ * of 1/3 of a car body (28px), so the two readings still agree and the
+ * number stays a spec, not a taste call. When the town grows, this moves
+ * with it (npc-proportions.test.ts recomputes it independently).
  *
  * Before this, the sprite was blitted at scale 1.4 = 63px tall: as tall as a
  * house and twice a car. Every offset below is derived from NPC_H instead of
  * being hand-tuned, so the whole figure (shadow, ring, name tag, bubble) moves
  * together when this one number changes.
  */
-export const NPC_H = 10;
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 === 1 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
+const BUILT = LOCATIONS.filter((l) => l.category !== "Food" && l.category !== "Water");
+const TOWN_MED_W = median(BUILT.map((l) => l.w * V));
+const TOWN_MED_H = median(BUILT.map((l) => l.h * V));
+export const NPC_H = Math.round(((TOWN_MED_W + TOWN_MED_H) / 2) / 10);
 /** Buffer row in renderer/pixelBuffer where the hooves land (see draw.ts). */
 const NPC_GROUND_ROW = 45;
 /** Buffer px → world px, i.e. what makes the sprite exactly NPC_H tall. */
@@ -909,7 +922,7 @@ export class Xf {
           const idleBob = Math.sin(a.idlePhase * 0.9) * 0.6;
           const speedBob = a.path.length > 0 ? Math.abs(Math.sin(walkPhase * Math.PI * 2)) * 1.0 : 0;
           const buf = renderLlama(genes, sk);
-          // NPC_H/NPC_GROUND_ROW → a 10px resident: 1/10 house, 1/3 car
+          // NPC_H/NPC_GROUND_ROW → town-median-derived resident, still 1/3 car
           const scale = NPC_SCALE;
           const w = BUF_W * scale;
           const h = BUF_H * scale;
@@ -959,7 +972,7 @@ export class Xf {
               : 0.9;
             ctx.beginPath();
             // framed to the resident, not to the map — it has to read as a ring
-            // around a 10px figure rather than a hoop three residents wide
+            // around an NPC_H-tall figure rather than a hoop three residents wide
             ctx.ellipse(a.x, a.y + NPC_H * 0.2, NPC_H * 0.6, NPC_H * 0.24, 0, 0, Math.PI * 2);
             ctx.stroke();
             ctx.globalAlpha = 1;
