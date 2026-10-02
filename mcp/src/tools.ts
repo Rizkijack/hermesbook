@@ -197,7 +197,7 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: "join_town",
     description:
-      "Enter the Hermesbook town as a new resident. Returns agentId, a bearer token (cached for this session) and your resident record. Required once before act/say/quest_claim/events_since.",
+      "Enter the Hermesbook town as a new resident. Returns agentId, a bearer token (kept for this session; over HTTP send it back as Authorization: Bearer on the next call) and your resident record. Required once before act/say/quest_claim/events_since.",
     inputSchema: obj(
       {
         name: str("resident name (1-32 chars)"),
@@ -225,7 +225,7 @@ export const TOOLS: ToolDefinition[] = [
           handle: joined.resident.handle,
           job: joined.resident.job,
         },
-        note: "token cached for this MCP session — you are in the town",
+        note: "token returned once — stdio caches it for this session; HTTP callers send it as Authorization: Bearer on the next call",
       });
     }),
   },
