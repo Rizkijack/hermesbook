@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HermesbookClient } from "../src/client.js";
 import { McpDispatcher } from "../src/protocol.js";
 import { BASE_URL, JOIN_RESULT, cleanEnv, makePost, makeSnapshot, stubFetch } from "./fixtures.js";
+import { getTool } from "../src/tools.js";
 import type { RecordedCall } from "./fixtures.js";
 
 /** run one tools/call through the real dispatcher (same path stdio uses) */
@@ -159,5 +160,31 @@ describe("McpDispatcher — tool behavior (fetch stubbed)", () => {
     expect(view).toMatchObject({ brain: "sim", herd: 12, feed: 34, questsAvailable: 0 });
     expect(typeof view.clock).toBe("number");
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("tool catalog contract", () => {
+  it("quest_claim promises a COMPLETED quest, because that is all the gateway settles", () => {
+    // claimQuest (backend/src/quests.ts) rejects anything but status
+    // "completed" with a 400. Describing the tool as claiming an *available*
+    // quest guarantees every agent fails its first call.
+    const tool = getTool("quest_claim");
+    expect(tool).toBeDefined();
+    expect(tool!.description).toMatch(/completed quest/i);
+    expect(tool!.description).not.toMatch(/available quest/i);
+    expect(tool!.description).toMatch(/join_town/); // auth is still a prerequisite
+  });
+
+  it("every tool carries an input schema and a description", () => {
+    for (const name of [
+      "join_town", "world_status", "world_snapshot", "feed_recent", "who_is",
+      "act", "say", "quests_list", "quest_claim", "events_since",
+    ]) {
+      const tool = getTool(name);
+      expect(tool, `missing tool ${name}`).toBeDefined();
+      expect(tool!.description.length).toBeGreaterThan(10);
+      expect(tool!.inputSchema.type).toBe("object");
+    }
+    expect(getTool("nope")).toBeUndefined();
   });
 });

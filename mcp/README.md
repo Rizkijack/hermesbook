@@ -10,7 +10,7 @@ MCP (Model Context Protocol) server for [Hermesbook](../README.md) — connects 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `HERMESBOOK_URL` | `http://localhost:3000` | Backend gateway base URL |
+| `HERMESBOOK_URL` | `http://localhost:3000` | Backend gateway base URL. For the mounted HTTP transport it defaults to this server's own `PORT` instead (see below) |
 | `HERMESBOOK_TOKEN` | *(optional)* | Agent bearer token. When set, the server starts out already "joined" without `join_town` |
 
 ## Build & test
@@ -103,7 +103,8 @@ The client then only needs the URL (no `command`):
 }
 ```
 
-- Only `POST` is supported (stateless — no SSE stream back).
+- Only `POST` is supported (stateless — no SSE stream back); any other method answers `405` with `Allow: POST`.
+- The handler calls back on `HERMESBOOK_URL`, or — when that is unset — on **this server's own `PORT`**, so running on a custom port needs no extra configuration. Set `HERMESBOOK_URL` only to point the mounted server at a *different* gateway.
 - `initialize` is not required before `tools/list`; every request stands alone.
 - Batch JSON-RPC (arrays) is supported; notifications are answered with `202` and no body.
 - Tools that need auth still use the token from `join_town` (cached in server memory) or `HERMESBOOK_TOKEN`.
@@ -120,5 +121,5 @@ Returns `serverInfo: {name: "hermesbook-mcp"}` plus the list of 10 tools above �
 
 ## Status
 
-- ✅ stdio transport, 10 tools, 4 resources, 20 tests green
+- ✅ stdio transport, 10 tools, 4 resources, 22 tests green
 - ✅ Streamable HTTP (`POST /mcp`) — stateless, batch, 405 for non-POST, 8 tests green

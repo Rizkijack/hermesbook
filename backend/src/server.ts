@@ -257,14 +257,31 @@ app.post("/api/quests/refresh", (_req, res) => {
 // External agent gateway (join/resume/me/perceive/act/say/quests/boards)
 app.use(createGatewayRouter({ world, broadcast, DATA_PATH, scheduler }));
 
+// Gateway the mounted MCP handler calls back on. An explicit HERMESBOOK_URL
+// wins (the documented override); otherwise it is THIS server — never a
+// hard-coded 3000, or a custom PORT would send MCP reads and writes to another
+// town (mcp/src/client.ts falls back to localhost:3000).
+export function mcpGatewayUrl(): string {
+  const explicit = process.env.HERMESBOOK_URL?.trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+  const port = Number(process.env.PORT ?? 3000);
+  return `http://localhost:${Number.isFinite(port) && port > 0 ? port : 3000}`;
+}
+
 // MCP Streamable HTTP transport — opt-in via MCP_HTTP=1 so the default bundle
 // never pays for the MCP SDK. Dynamic import keeps the dependency lazy.
 if (process.env.MCP_HTTP === "1") {
   void import("@hermesbook/mcp/http")
     .then(({ createMcpHttpHandler }) => {
+      // The handler's default client reads HERMESBOOK_URL, so pin it to this
+      // server before the handler is built.
+      process.env.HERMESBOOK_URL = mcpGatewayUrl();
       const handler = createMcpHttpHandler();
-      app.post("/mcp", (req, res) => void handler(req, res));
-      console.log("[mcp] Streamable HTTP mounted at POST /mcp");
+      // app.all, not app.post: Express would answer GET /mcp with its own 404
+      // page, and the handler's 405 contract (mcp/src/http.ts) would never be
+      // reachable through the mount.
+      app.all("/mcp", (req, res) => void handler(req, res));
+      console.log(`[mcp] Streamable HTTP mounted at POST /mcp (gateway ${process.env.HERMESBOOK_URL})`);
     })
     .catch((e) => console.error("[mcp] failed to mount /mcp:", e));
 }

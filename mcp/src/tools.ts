@@ -354,7 +354,10 @@ export const TOOLS: ToolDefinition[] = [
   },
   {
     name: "quest_claim",
-    description: "Claim an available quest by id. Requires join_town first.",
+    // The gateway only settles quests already marked completed
+    // (backend/src/quests.ts claimQuest), so promising an "available" quest
+    // would send every agent into a guaranteed 400.
+    description: "Claim the reward of a completed quest by id. Requires join_town first.",
     inputSchema: obj({ questId: str("quest id") }, ["questId"]),
     handler: guard(async (args, client) => {
       return ok(await client.questClaim(String(args.questId)));
