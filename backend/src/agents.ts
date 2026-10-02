@@ -109,13 +109,18 @@ export function joinWorld(world: TownSnapshot, input: JoinInput): JoinResult {
   if (bio.length > 180) throw new AgentError("bio too long");
   if (traits.length > 3) throw new AgentError("too many traits");
   if (CONTROL_CHARS.test(name + bio)) throw new AgentError("invalid characters");
-  if (world.herd.length >= world.config.maxHerd) throw new AgentError("the pasture is full");
   if (world.herd.some((h) => h.name.toLowerCase() === name.toLowerCase())) throw new AgentError("name already taken");
 
+  const parent = input.parent ? world.herd.find((h) => h.id === input.parent) : undefined;
+  if (input.parent && !parent) throw new AgentError("parent not found");
+
+  // Capacity is checked last — right before the first mutation (forks++ below) —
+  // so a full pasture never masks a bad payload. Same contract as POST /api/fork:
+  // validate the input first, then apply the world-state constraint.
+  if (world.herd.length >= world.config.maxHerd) throw new AgentError("the pasture is full");
+
   let resident: Resident;
-  if (input.parent) {
-    const parent = world.herd.find((h) => h.id === input.parent);
-    if (!parent) throw new AgentError("parent not found");
+  if (parent) {
     const childGenes = encodeGenes(rf(Hc(parent.genes), name));
     resident = makeResidentFromFork(parent, name, bio, traits, job, childGenes);
     parent.forks = (parent.forks ?? 0) + 1;

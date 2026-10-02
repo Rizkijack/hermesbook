@@ -6,6 +6,7 @@ dist
 data/town.json
 data/town.backup.json
 data/town.tmp.*
+data/*.bak
 frontend/dist
 backend/dist
 shared/dist

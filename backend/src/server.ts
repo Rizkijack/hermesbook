@@ -1,4 +1,3 @@
-// @ts-nocheck — Vercel func bundling uses built-in TS 5.9 with @types/express mismatch; local tsc is source of truth
 import express from "express";
 import cors from "cors";
 import type { TownSnapshot, Resident } from "@hermesbook/shared";
@@ -135,11 +134,9 @@ app.post("/api/fork", async (req, res) => {
   }
   const { parent, name, bio, traits, job } = parsed.data;
 
-  if (world.herd.length >= world.config.maxHerd) {
-    res.status(400).json({ error: "the pasture is full" });
-    return;
-  }
-
+  // Input validation runs BEFORE the capacity check so a bad payload always
+  // reports why it is bad — a full pasture must not mask a missing parent or
+  // a taken name (test: "POST /api/fork validates input before capacity").
   const parentResident = world.herd.find((h) => h.id === parent);
   if (!parentResident) {
     res.status(400).json({ error: "parent not found" });
@@ -155,6 +152,13 @@ app.post("/api/fork", async (req, res) => {
   // moderate: no control chars
   if (CONTROL_CHARS.test(name + bio)) {
     res.status(400).json({ error: "invalid characters" });
+    return;
+  }
+
+  // capacity last — right before the mutation: a valid payload on a full
+  // pasture still gets the 400, but only after the input itself is checked.
+  if (world.herd.length >= world.config.maxHerd) {
+    res.status(400).json({ error: "the pasture is full" });
     return;
   }
 
