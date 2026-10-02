@@ -23,6 +23,12 @@ export interface Resident {
       placeName: string;
       since: number;
       why: string;
+      /**
+       * Id of the npc-agent skill rule that produced this decision
+       * (skills/npc-agent, machine-readable source: shared/src/skills.ts).
+       * Optional so snapshots written before the skill existed still load.
+       */
+      skill?: string;
     };
     spirits: number;
     obsession: string;
@@ -38,6 +44,15 @@ export interface AgentRecord {
   id: string;
   residentId: string;
   tokenHash: string;
+  /**
+   * The human account that registered/operates this agent (registration page,
+   * `#/register`). Optional: records written before the page existed have none,
+   * and `GET /api/snapshot` redacts the whole registry anyway.
+   */
+  owner?: {
+    name: string;
+    handle: string;
+  };
   origin: string;
   joinedAt: number;
   lastActAt: number;
