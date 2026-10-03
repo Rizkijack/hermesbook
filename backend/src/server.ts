@@ -305,6 +305,8 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, now: Date.now() }));
 
 // Turn scheduler interval (18s per doc demo; prod faster for testing 4s)
 const TURN_MS = Number(process.env.TURN_MS ?? 1800);
+// 5s on pg avoids rewriting the full snapshot every 1.8s tick.
+const TICK_SAVE_MS = Number(process.env.PG_SAVE_DEBOUNCE_MS ?? (process.env.DATABASE_URL ? 5000 : 800));
 let turnTimer: ReturnType<typeof setInterval> | null = null;
 let turnCount = 0;
 function startScheduler(): void {
@@ -389,7 +391,7 @@ function startScheduler(): void {
     }
 
     // debounced save for routine ticks
-    saveDebounced(DATA_PATH, world);
+    saveDebounced(DATA_PATH, world, TICK_SAVE_MS);
   }, TURN_MS);
   // allow process to exit in tests
   if (turnTimer && typeof (turnTimer as NodeJS.Timeout).unref === "function") (turnTimer as NodeJS.Timeout).unref();
