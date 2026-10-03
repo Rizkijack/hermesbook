@@ -37,6 +37,16 @@ function resolveDataPath(): string {
 
 const DATA_PATH = resolveDataPath();
 
+if (process.env.DATABASE_URL) {
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const { ensureSchema } = await import("./pgstore.js");
+    await ensureSchema(neon(process.env.DATABASE_URL));
+  } catch (e) {
+    console.error("[persist] ensureSchema failed, booting ephemeral world:", e);
+  }
+}
+
 // Load or create world
 let world: TownSnapshot;
 try {
