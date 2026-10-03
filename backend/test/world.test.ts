@@ -5,8 +5,8 @@ import { LOCATIONS } from "../src/locations.js";
 import { Pe, V, WorldSize } from "../src/map.js";
 
 describe("World", () => {
-  it("has 26 locations", () => {
-    expect(LOCATIONS.length).toBe(26);
+  it("has 34 locations", () => {
+    expect(LOCATIONS.length).toBe(34);
     expect(LOCATIONS.find((l) => l.id === "square")!.x).toBe(96);
   });
 

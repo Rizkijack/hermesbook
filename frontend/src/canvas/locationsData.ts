@@ -26,4 +26,12 @@ export const LOCATIONS: Loc[] = [
   { id: "trough", name: "The Trough", x: 94, y: 83, w: 6, h: 3, spot: [96, 84], category: "Food", blurb: "The trough." },
   { id: "fire", name: "The Fire", x: 108, y: 82, w: 5, h: 4, spot: [110, 84], category: "Social", blurb: "The campfire." },
   { id: "board", name: "The Notice Board", x: 103, y: 57, w: 3, h: 2, spot: [104, 58], category: "Civic", blurb: "The notice board." },
+  { id: "stables", name: "The Stables", x: 86, y: 24, w: 9, h: 6, spot: [90, 31], category: "Rest", blurb: "Horses sleep here; llamas judge them." },
+  { id: "granary", name: "The Granary", x: 76, y: 31, w: 8, h: 7, spot: [80, 39], category: "Work", blurb: "Oats under lock and key." },
+  { id: "warehouse", name: "The Warehouse", x: 118, y: 32, w: 9, h: 6, spot: [122, 39], category: "Work", blurb: "Boxes nobody remembers ordering." },
+  { id: "chapel", name: "The Chapel", x: 176, y: 56, w: 7, h: 7, spot: [179, 64], category: "Civic", blurb: "Prayers for extra grass." },
+  { id: "inn", name: "The Wayfarer Inn", x: 140, y: 68, w: 10, h: 6, spot: [145, 75], category: "Social", blurb: "Beds for travellers who kept walking." },
+  { id: "smithy", name: "The Smithy", x: 162, y: 92, w: 8, h: 7, spot: [166, 100], category: "Work", blurb: "Horseshoes and regret." },
+  { id: "farmhouse", name: "The Farmhouse", x: 80, y: 100, w: 11, h: 7, spot: [85, 108], category: "Rest", blurb: "Where oats begin their careers." },
+  { id: "theatre", name: "The Fleece Theatre", x: 98, y: 101, w: 11, h: 6, spot: [103, 108], category: "Social", blurb: "Woolly performances nightly." },
 ];

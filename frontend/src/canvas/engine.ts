@@ -1,6 +1,7 @@
 import { V, WorldWidth, WorldHeight } from "./constants.js";
 import { LOCATIONS } from "./locationsData.js";
 import { pf } from "./pf.js";
+import { navmap } from "./navmap.js";
 import { DAY_LENGTH_SEC, Hc } from "@hermesbook/shared";
 import { renderLlama } from "./renderer/draw.js";
 import { sf } from "./renderer/skeleton.js";
@@ -13,10 +14,62 @@ export const MAX_ZOOM = 2.8;
 const CAM_HOME_X = 1600;
 const CAM_HOME_Y = 900;
 
+/**
+ * Resident height in world px — the proportion lock for the whole sprite.
+ *
+ * Derived, not picked: 1/10 of the town's own median built structure.
+ * Characteristic size = average of the median footprint width and height
+ * over every solid location (Food/Water are terrain, not buildings), in
+ * world px, divided by ten and rounded. Today that is
+ * ((128 + 80) / 2) / 10 = 10.4 → 10px — which also lands within a pixel
+ * of 1/3 of a car body (28px), so the two readings still agree and the
+ * number stays a spec, not a taste call. When the town grows, this moves
+ * with it (npc-proportions.test.ts recomputes it independently).
+ *
+ * Before this, the sprite was blitted at scale 1.4 = 63px tall: as tall as a
+ * house and twice a car. Every offset below is derived from NPC_H instead of
+ * being hand-tuned, so the whole figure (shadow, ring, name tag, bubble) moves
+ * together when this one number changes.
+ */
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 === 1 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
+const BUILT = LOCATIONS.filter((l) => l.category !== "Food" && l.category !== "Water");
+const TOWN_MED_W = median(BUILT.map((l) => l.w * V));
+const TOWN_MED_H = median(BUILT.map((l) => l.h * V));
+export const NPC_H = Math.round(((TOWN_MED_W + TOWN_MED_H) / 2) / 10);
+/** Buffer row in renderer/pixelBuffer where the hooves land (see draw.ts). */
+const NPC_GROUND_ROW = 45;
+/** Buffer px → world px, i.e. what makes the sprite exactly NPC_H tall. */
+export const NPC_SCALE = NPC_H / NPC_GROUND_ROW;
+/** Ratio against offsets that were sized for the old 63px sprite. */
+const NPC_K = NPC_H / 63;
+
 /** 08 §10.2 — name-tag / ring colour by finishing rank: 1st, 2nd, 3rd. */
 export const RANK_COLORS = ["#c9a86a", "#b9c0c4", "#b87333"] as const;
 /** Entrants before a result exists — everyone competing gets the same mark. */
 export const ENTRANT_COLOR = "#7a5cc4";
+
+/**
+ * Movement constants — the three numbers the walking behaviour hangs on.
+ *
+ * ARRIVE_R is a fixed radius consumed from the agent's real position: no snap
+ * to the tile centre, and no speed-dependent threshold that can flicker a
+ * waypoint in and out as the sprite wobbles around it.
+ */
+const ARRIVE_R = 4;
+/** Below this distance to the waypoint the walk eases off instead of lurching. */
+const SLOW_R = 18;
+/** Personal space (world px): separation kicks in under this gap. */
+const SEP_R = 14;
+/** Separation is a speed, not a shove: it may add at most this many px/s. */
+const SEP_V = 48;
+/** walkPhase is distance-driven: one gait cycle per 25px actually travelled. */
+const STEP_PER_PX = 0.04;
+/** How fast velocity re-aims at the desired velocity (per-frame, ~60Hz). */
+const STEER_K = 0.22;
 
 /** The slice of a contest the renderer needs (08 §9, §10.2). */
 export interface ContestMark {
@@ -283,67 +336,60 @@ export class Xf {
     for (const a of this.byId.values()) {
       const isSleeping = a.doing === "sleep";
       const targetSpeedBase = (actSpeed[a.doing] ?? 32) * a.baseSpeed;
+      const prevX = a.x;
+      const prevY = a.y;
+
+      // Desired velocity this frame (px/s). The walk branch fills it in from
+      // the current waypoint; the idle branch below leaves it at rest, and the
+      // shared block at the end of the loop adds separation and integrates.
+      let steerX = 0;
+      let steerY = 0;
 
       if (a.path.length > 0) {
         const next = a.path[0]!;
-        // add organic wobble to target tile center
-        const wobbleX = Math.sin(this.t * 0.9 + hashId(a.id) * 0.01) * 1.8;
-        const wobbleY = Math.cos(this.t * 1.1 + hashId(a.id) * 0.013) * 1.2;
-        const tx = next.x * V + V / 2 + wobbleX;
-        const ty = next.y * V + V / 2 + wobbleY;
+        // The waypoint centre is fixed — no wobble, so the distance to it can
+        // only shrink and the arrival test cannot flicker around a threshold.
+        const tx = next.x * V + V / 2;
+        const ty = next.y * V + V / 2;
         const dx = tx - a.x;
         const dy = ty - a.y;
         const dist = Math.hypot(dx, dy);
-        // arrival slowdown
-        const slowFactor = dist < 18 ? dist / 18 : 1;
-        const jitter = 0.88 + Math.random() * 0.24; // per-frame speed variation
-        const speed = targetSpeedBase * slowFactor * jitter * dt;
 
-        if (dist < Math.max(2, speed)) {
-          a.x = tx;
-          a.y = ty;
+        if (dist < ARRIVE_R) {
+          // consume the waypoint from the agent's real position — never snap
           a.path.shift();
           // occasional dust puff when stepping
           if (Math.random() < 0.18 && targetSpeedBase > 20) {
-            this.puffs.push({ x: a.x, y: a.y + 8, vx: (Math.random() - 0.5) * 18, vy: -8 - Math.random() * 12, life: 0.42, kind: "dust" });
+            // spawn point rides with the resident: the hooves are on a.y now,
+            // so +8 would drop the dust a body-height behind them
+            this.puffs.push({ x: a.x, y: a.y + 1.5, vx: (Math.random() - 0.5) * 18 * NPC_K, vy: (-8 - Math.random() * 12) * NPC_K, life: 0.42, kind: "dust" });
           }
         } else {
-          // acceleration smoothing
-          const targetVx = (dx / dist) * targetSpeedBase;
-          const targetVy = (dy / dist) * targetSpeedBase;
-          a.vx += (targetVx - a.vx) * 0.22;
-          a.vy += (targetVy - a.vy) * 0.22;
-          // add slight perpendicular sway for organic
-          const sway = Math.sin(this.t * 2.4 + hashId(a.id) * 0.02) * 0.45;
-          const perpX = - (dy / dist) * sway;
-          const perpY = (dx / dist) * sway;
-          a.x += (a.vx * dt * 0.06 + perpX * dt);
-          a.y += (a.vy * dt * 0.06 + perpY * dt);
-          // smooth facing, hysteresis 4px
-          if (Math.abs(dx) > 3) a.facing = dx > 0 ? 1 : -1;
-          // walk phase advances by distance
-          const step = Math.hypot(a.vx, a.vy) * dt * 0.04;
-          a.walkPhase = (a.walkPhase + step) % 1;
-          // slight idle phase for breathing while moving
-          a.idlePhase += dt * 0.6;
+          // arrival slowdown + per-frame speed variation — both in px/s now
+          const slowFactor = dist < SLOW_R ? dist / SLOW_R : 1;
+          const jitter = 0.88 + Math.random() * 0.24; // per-frame speed variation
+          const speed = targetSpeedBase * slowFactor * jitter;
+          const dirX = dx / dist;
+          const dirY = dy / dist;
+          // A zero-speed act (sleep/spit/shake) holds a stale waypoint — the
+          // sway term below would still be a live velocity and make them
+          // jiggle in place all night, keeping moved > 0 so the gait animates
+          // while asleep. No speed, no steer: steerX/steerY stay at rest.
+          if (speed > 0) {
+            // slight perpendicular sway for organic — a velocity, not a position kick
+            const sway = Math.sin(this.t * 2.4 + hashId(a.id) * 0.02) * 2;
+            steerX = dirX * speed - dirY * sway;
+            steerY = dirY * speed + dirX * sway;
+            // smooth facing, hysteresis 4px
+            if (Math.abs(dx) > 3) a.facing = dx > 0 ? 1 : -1;
+            // slight idle phase for breathing while moving
+            a.idlePhase += dt * 0.6;
+          }
         }
       } else {
         // no path — autonomous idle wander if not sleeping
         if (!isSleeping) {
           a.wanderTimer -= dt;
-          // separation: push away from nearby agents if too close
-          for (const other of this.byId.values()) {
-            if (other.id === a.id) continue;
-            const dx = a.x - other.x;
-            const dy = a.y - other.y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 < 22 * 22 && d2 > 0.1) {
-              const push = 18 * dt / Math.max(1, Math.sqrt(d2));
-              a.x += dx * push * 0.08;
-              a.y += dy * push * 0.08;
-              a.vx += dx * push * 0.02;
-            }
-          }
 
           if (a.wanderTimer <= 0) {
             // pick new idle target
@@ -380,11 +426,12 @@ export class Xf {
             const sx = Math.floor(a.x / V);
             const sy = Math.floor(a.y / V);
             if (nx !== sx || ny !== sy) {
-              const mapLike = {
-                at(_x: number, _y: number) { return 0; },
-                solid(x: number, y: number) { return x < 0 || y < 0 || x >= 210 || y >= 128; },
-              };
-              const path = pf(mapLike, sx, sy, nx, ny);
+              // the town's real collision map: buildings are solid, doors and
+              // spots are carved walkable, roads are cheap (navmap.ts)
+              const nav = navmap();
+              const from = nav.nearestWalkable(sx, sy);
+              const to = nav.nearestWalkable(nx, ny);
+              const path = pf(nav, from.x, from.y, to.x, to.y);
               // smooth: drop every other point for less grid-locked (decimate)
               const smooth = path.filter((_, i) => i % 2 === 0 || i === path.length - 1);
               if (smooth.length > 0) {
@@ -404,27 +451,58 @@ export class Xf {
               a.wanderTimer = 0.8 + Math.random();
             }
           } else {
-            // idle micro-movement: breathing sway + occasional step-in-place
+            // idle: animation phase only — an idle resident does not move.
+            // (the old breathing/fidget kicks here were position teleports:
+            // an idle agent drifted and jumped tiles over a few hundred ticks)
             a.idlePhase += dt * (0.7 + a.baseSpeed * 0.3);
-            const breathX = Math.sin(a.idlePhase * 0.9) * 0.35;
-            const breathY = Math.cos(a.idlePhase * 0.7) * 0.22;
-            a.x += breathX * dt * 0.5;
-            a.y += breathY * dt * 0.5;
-            // walkPhase still ticks slowly when idle (fidget)
-            a.walkPhase = (a.walkPhase + dt * 0.08) % 1;
-            if (Math.random() < 0.006) {
-              // tiny fidget step
-              a.x += (Math.random() - 0.5) * 4;
-              a.y += (Math.random() - 0.5) * 3;
-              a.walkPhase += 0.08;
-            }
           }
         } else {
           // sleeping: just breathing
           a.idlePhase += dt * 0.5;
-          a.x += Math.sin(a.idlePhase) * 0.04;
         }
       }
+
+      // ---- shared every-frame block: separation + integration -------------
+      // separation runs while walking too, and it is a speed (px/s), never a
+      // positional shove: the integration below is the only thing that moves
+      // an agent, so nothing can jump more than one frame of velocity.
+      if (!isSleeping) {
+        let sepX = 0;
+        let sepY = 0;
+        for (const other of this.byId.values()) {
+          if (other.id === a.id) continue;
+          const dx = a.x - other.x;
+          const dy = a.y - other.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < SEP_R * SEP_R && d2 > 0.1) {
+            const d = Math.sqrt(d2);
+            const w = (SEP_R - d) / SEP_R;
+            sepX += (dx / d) * w;
+            sepY += (dy / d) * w;
+          }
+        }
+        if (sepX || sepY) {
+          const m = Math.hypot(sepX, sepY);
+          if (m > 1) { sepX /= m; sepY /= m; }
+          steerX += sepX * SEP_V;
+          steerY += sepY * SEP_V;
+        }
+      } else {
+        a.vx = 0;
+        a.vy = 0;
+      }
+
+      // pure pos += v*dt: velocity eases toward the desired velocity, then
+      // the position advances by exactly one frame of it
+      a.vx += (steerX - a.vx) * STEER_K;
+      a.vy += (steerY - a.vy) * STEER_K;
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+
+      // walkPhase follows the ground actually covered — it advances while the
+      // resident walks and stops the frame they stop (AC6)
+      const moved = Math.hypot(a.x - prevX, a.y - prevY);
+      if (moved > 0) a.walkPhase = (a.walkPhase + moved * STEP_PER_PX) % 1;
 
       // clamp to world
       a.x = Math.max(12, Math.min(this.worldW - 12, a.x));
@@ -483,11 +561,12 @@ export class Xf {
       const ty = loc.spot[1] + Math.floor(jitterY / V);
       const sx = Math.floor(a.x / V);
       const sy = Math.floor(a.y / V);
-      const mapLike = {
-        at(_x: number, _y: number) { return 0; },
-        solid(x: number, y: number) { return x < 0 || y < 0 || x >= 210 || y >= 128; },
-      };
-      const path = pf(mapLike, sx, sy, tx, ty);
+      // the town's real collision map — same one the wander picker uses, so
+      // both pf() call sites see buildings as walls and doors as doors
+      const nav = navmap();
+      const from = nav.nearestWalkable(sx, sy);
+      const to = nav.nearestWalkable(tx, ty);
+      const path = pf(nav, from.x, from.y, to.x, to.y);
       // smooth path: keep first, decimate middle, keep last
       const smooth = path.length > 6 ? path.filter((_, i) => i % 2 === 0 || i === path.length - 1) : path;
       a.path = smooth;
@@ -511,7 +590,9 @@ export class Xf {
     attacker.path = [];
     attacker.vx = attacker.facing * 8;
     setTimeout(() => {
-      this.puffs.push({ x: attacker.x + attacker.facing * 22, y: attacker.y - 26, vx: attacker.facing * 140, vy: -30, life: 0.8, kind: "spit" });
+      // launched from head height and scaled like the sprite: the old offsets
+      // were tuned for a 63px figure and would fire over the roofline now
+      this.puffs.push({ x: attacker.x + attacker.facing * 22 * NPC_K, y: attacker.y - 26 * NPC_K, vx: attacker.facing * 140 * NPC_K, vy: -30 * NPC_K, life: 0.8, kind: "spit" });
       victim.doing = "shake";
       victim.path = [];
       victim.mood -= 0.6;
@@ -837,11 +918,12 @@ export class Xf {
           // walkPhase is now maintained per-agent, not global t
           const walkPhase = a.walkPhase % 1;
           const sk = sf({ t: this.t + hashId(a.id) * 0.01, walkPhase, doing: a.doing, facing: a.facing });
-          const shake = a.doing === "shake" ? Math.sin(this.t * 38 + hashId(a.id)) * 2.2 : 0;
+          const shake = a.doing === "shake" ? Math.sin(this.t * 38 + hashId(a.id)) * Math.max(0.6, 2.2 * NPC_K) : 0;
           const idleBob = Math.sin(a.idlePhase * 0.9) * 0.6;
           const speedBob = a.path.length > 0 ? Math.abs(Math.sin(walkPhase * Math.PI * 2)) * 1.0 : 0;
           const buf = renderLlama(genes, sk);
-          const scale = 1.4;
+          // NPC_H/NPC_GROUND_ROW → town-median-derived resident, still 1/3 car
+          const scale = NPC_SCALE;
           const w = BUF_W * scale;
           const h = BUF_H * scale;
           const off = document.createElement("canvas");
@@ -867,13 +949,16 @@ export class Xf {
           const stretch = a.path.length > 0 ? 1 + Math.sin(walkPhase * Math.PI * 2) * 0.035 : 1;
           const squash = a.path.length > 0 ? 1 - Math.sin(walkPhase * Math.PI * 2) * 0.02 : 1;
           ctx.scale(a.facing === -1 ? -stretch : stretch, squash);
-          ctx.drawImage(off, -w / 2, -h + 12, w, h);
+          // -NPC_H puts buffer row NPC_GROUND_ROW (the hooves) on the anchor,
+          // so the resident stands on its path point instead of floating
+          ctx.drawImage(off, -w / 2, -NPC_H, w, h);
           ctx.restore();
 
-          // shadow ellipse
+          // shadow ellipse — same ground line as the hooves, same ratio to the
+          // body as the old 63px sprite (radius = 8.4 buffer px)
           ctx.fillStyle = "rgba(0,0,0,0.13)";
           ctx.beginPath();
-          ctx.ellipse(a.x, a.y + 6, 14 * scale * 0.6, 5 * scale * 0.5, 0, 0, Math.PI * 2);
+          ctx.ellipse(a.x, a.y + 1, 14 * scale * 0.6, 5 * scale * 0.5, 0, 0, Math.PI * 2);
           ctx.fill();
 
           // 08 §10.2 — a coloured ring under every contestant, so the roster is
@@ -881,12 +966,14 @@ export class Xf {
           const ringCol = this.contestColor(a.id);
           if (ringCol) {
             ctx.strokeStyle = ringCol;
-            ctx.lineWidth = 2.2;
+            ctx.lineWidth = 1.4;
             ctx.globalAlpha = this.contest?.state === "live"
               ? 0.7 + 0.3 * Math.sin(this.t * 5 + hashId(a.id) * 0.01)
               : 0.9;
             ctx.beginPath();
-            ctx.ellipse(a.x, a.y + 7, 17, 6.5, 0, 0, Math.PI * 2);
+            // framed to the resident, not to the map — it has to read as a ring
+            // around an NPC_H-tall figure rather than a hoop three residents wide
+            ctx.ellipse(a.x, a.y + NPC_H * 0.2, NPC_H * 0.6, NPC_H * 0.24, 0, 0, Math.PI * 2);
             ctx.stroke();
             ctx.globalAlpha = 1;
           }
@@ -894,17 +981,19 @@ export class Xf {
           ctx.save();
           ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
           const sx = (a.x - cam.x) * cam.zoom + viewportW / 2;
-          const sy = (a.y - 56 * scale - cam.y) * cam.zoom + viewportH / 2 + idleBob * cam.zoom * 0.3;
-          ctx.font = "10px JetBrains Mono";
+          // name tag: bottom 5px above the crown, box sized to the figure —
+          // a 14px box was taller than the resident once the sprite shrank
+          const sy = (a.y - (NPC_H + 5) - cam.y) * cam.zoom + viewportH / 2 + idleBob * cam.zoom * 0.3;
+          ctx.font = "8px JetBrains Mono";
           ctx.textAlign = "center";
-          const labelBgW = a.name.length * 6 + 8;
+          const labelBgW = a.name.length * 4.8 + 7;
           ctx.fillStyle = "rgba(244,241,234,0.92)";
-          ctx.fillRect(sx - labelBgW / 2, sy - 14, labelBgW, 14);
+          ctx.fillRect(sx - labelBgW / 2, sy - 11, labelBgW, 11);
           ctx.strokeStyle = "#1b1915";
           ctx.lineWidth = 0.5;
-          ctx.strokeRect(sx - labelBgW / 2, sy - 14, labelBgW, 14);
+          ctx.strokeRect(sx - labelBgW / 2, sy - 11, labelBgW, 11);
           ctx.fillStyle = this.tagColor(a.id);
-          ctx.fillText(a.name, sx, sy - 4);
+          ctx.fillText(a.name, sx, sy - 3);
           ctx.restore();
         },
       });
@@ -919,7 +1008,9 @@ export class Xf {
 
     for (const p of this.puffs) {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.kind === "spit" ? 4 : 3, 0, Math.PI * 2);
+      // 4/3px were sized for a 63px figure — on a 10px one a 4px ball would be
+      // bigger than its head, so keep them small but still on-screen
+      ctx.arc(p.x, p.y, p.kind === "spit" ? 1.4 : 1, 0, Math.PI * 2);
       ctx.fillStyle = p.kind === "spit" ? "#cfe8f2" : "rgba(200,180,150,0.7)";
       ctx.fill();
       ctx.strokeStyle = "rgba(27,25,21,0.15)";
@@ -936,7 +1027,8 @@ export class Xf {
       const ag = this.byId.get(bub.by);
       if (!ag) continue;
       const sx = ag.x;
-      const sy = ag.y - 62 - Math.sin(ag.idlePhase * 0.8) * 1.2;
+      // box bottom + its 8px tail: the tip lands on the crown (a.y - NPC_H)
+      const sy = ag.y - NPC_H - 8 - Math.sin(ag.idlePhase * 0.8) * 1.2;
       const pad = 6;
       ctx.font = "11px Instrument Serif";
       const metrics = ctx.measureText(bub.text);

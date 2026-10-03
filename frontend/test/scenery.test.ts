@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { LOCATIONS } from "../src/canvas/locationsData.js";
 import {
-  ROADS, TREES, PROPS, LIGHTS, VEHICLES,
+  ROADS, TREES, PROPS, LIGHTS, VEHICLES, FORESTS,
   tickScenery, lightState, drawTerrainDecor, pushScenery, type QueueItem,
 } from "../src/canvas/scenery.js";
 
@@ -45,8 +45,69 @@ describe("scenery", () => {
 
   it("generates forest, props and traffic lights", () => {
     expect(TREES.length).toBeGreaterThan(60);
+    expect(TREES.length).toBeGreaterThanOrEqual(1023); // ≥2.5x baseline (409)
+    expect(FORESTS.length).toBeGreaterThanOrEqual(9);
+    expect(TREES.some((t) => t.kind === "birch"), "birch trees should exist").toBe(true);
+    // pine/bush only became reachable after the h2 rescale — keep all kinds alive
+    for (const kind of ["oak", "pine", "bush", "birch"] as const) {
+      expect(TREES.some((t) => t.kind === kind), `no ${kind} tree`).toBe(true);
+    }
+
+    // forest zones must not overlap each other
+    for (let i = 0; i < FORESTS.length; i++) {
+      for (let j = i + 1; j < FORESTS.length; j++) {
+        const a = FORESTS[i]!, b = FORESTS[j]!;
+        expect(
+          rectHit(a, b),
+          `${a.name} overlaps ${b.name}`,
+        ).toBe(false);
+      }
+    }
+
+    // forest zones must not cover a building footprint or a road
+    // (road check covers the new zones only: Southwest Forest crossed West Loop
+    //  by design — its floor paints under the asphalt)
+    const NEW_ZONES = new Set([
+      "Willowbank Grove", "North Central Grove", "South Central Grove",
+      "Pondside Woods", "East Ridge Woods",
+    ]);
+    for (const f of FORESTS) {
+      for (const l of LOCATIONS) {
+        expect(
+          rectHit(f, { x: l.x, y: l.y, w: l.w, h: l.h }),
+          `${f.name} overlaps building ${l.id}`,
+        ).toBe(false);
+      }
+      if (!NEW_ZONES.has(f.name)) continue;
+      for (const r of ROADS) {
+        expect(
+          rectHit(f, { x: r.x1, y: r.y1, w: r.x2 - r.x1 + 1, h: r.y2 - r.y1 + 1 }),
+          `${f.name} overlaps a road`,
+        ).toBe(false);
+      }
+    }
     expect(PROPS.length).toBeGreaterThan(30);
     expect(LIGHTS.length).toBe(10);
+  });
+
+  it("the 8 new buildings never overlap another footprint", () => {
+    // pairwise-old overlaps are pre-existing by design (square/board, pond/dock),
+    // so only the appended buildings are checked against the whole catalog.
+    const NEW_IDS = ["stables", "granary", "warehouse", "chapel", "inn", "smithy", "farmhouse", "theatre"];
+    for (const id of NEW_IDS) {
+      const b = LOCATIONS.find((l) => l.id === id);
+      expect(b, `missing building ${id}`).toBeDefined();
+      for (const l of LOCATIONS) {
+        if (l.id === id) continue;
+        expect(
+          rectHit({ x: b!.x, y: b!.y, w: b!.w, h: b!.h }, { x: l.x, y: l.y, w: l.w, h: l.h }),
+          `${id} overlaps ${l.id}`,
+        ).toBe(false);
+      }
+      // arrival spot sits on the row right below the footprint
+      expect(b!.spot[1], `${id} spot not below footprint`).toBe(b!.y + b!.h + 1);
+      expect(["Food", "Water"], `${id} must not be Food/Water (renders as field)`).not.toContain(b!.category);
+    }
   });
 
   it("no tree sits on a road or building", () => {

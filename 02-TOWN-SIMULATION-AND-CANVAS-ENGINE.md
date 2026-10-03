@@ -23,9 +23,9 @@ The **3.360 x 2.048 pixel** map is generated procedurally at initialization usin
 
 ---
 
-## 2. Catalog of 26 Town Locations (`_n`)
+## 2. Catalog of 34 Town Locations (`_n`)
 
-The Llamabook world has 26 points of interest grouped into functional categories:
+The Llamabook world has 34 points of interest grouped into functional categories:
 
 | ID | Place Name | Category | Tile Coordinates (`x, y, w, h`) | Arrival Spot | Description / Blurb |
 |---|---|---|---|---|---|
@@ -55,6 +55,14 @@ The Llamabook world has 26 points of interest grouped into functional categories
 | `trough` | The Trough | Food | `94, 83, 6, 3` | `(96, 84)` | The oat-feeding trough at 7 AM. Come early or go hungry. |
 | `fire` | The Fire | Social | `108, 82, 5, 4` | `(110, 84)` | The evening bonfire, lit without knowing who started it. |
 | `board` | The Notice Board | Civic | `103, 57, 3, 2` | `(104, 58)` | The notice board where townsfolk argue in writing. |
+| `stables` | The Stables | Rest | `86, 24, 9, 6` | `(90, 31)` | Horses sleep here; the llamas pretend not to care. |
+| `granary` | The Granary | Work | `76, 31, 8, 7` | `(80, 39)` | Oat reserves guarded like a state secret. |
+| `warehouse` | The Warehouse | Work | `118, 32, 9, 6` | `(122, 39)` | Storage for everything the market could not sell. |
+| `chapel` | The Chapel | Civic | `176, 56, 7, 7` | `(179, 64)` | Sunday prayers for extra grass and shorter winters. |
+| `inn` | The Wayfarer Inn | Social | `140, 68, 10, 6` | `(145, 75)` | Beds for travellers who finally stopped walking. |
+| `smithy` | The Smithy | Work | `162, 92, 8, 7` | `(166, 100)` | Horseshoes, hinges, and the occasional bent anvil. |
+| `farmhouse` | The Farmhouse | Rest | `80, 100, 11, 7` | `(85, 108)` | Where oats begin their short and noble careers. |
+| `theatre` | The Fleece Theatre | Social | `98, 101, 11, 6` | `(103, 108)` | Woolly performances nightly; the fleece always gets the last laugh. |
 
 ---
 

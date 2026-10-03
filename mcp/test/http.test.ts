@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createMcpHttpHandler, type HttpReqLike, type HttpResLike } from "../src/http.js";
 import { McpDispatcher } from "../src/protocol.js";
 import { HermesbookClient } from "../src/client.js";
 import { TOOLS } from "../src/tools.js";
 import { RESOURCES } from "../src/resources.js";
+import { stubFetch, cleanEnv, JOIN_RESULT } from "./fixtures.js";
 
 function fakeRes() {
   let statusCode = 0;
@@ -144,5 +145,102 @@ describe("protocol: stdio and http share the same dispatcher", () => {
     const d = new McpDispatcher(new HermesbookClient("http://gw.test"));
     const out = await d.handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "x", version: "0" } } });
     expect(out?.result).toMatchObject({ protocolVersion: "2024-11-05", serverInfo: { name: "hermesbook-mcp" } });
+  });
+});
+
+describe("MCP HTTP token isolation (security regression)", () => {
+  beforeEach(cleanEnv);
+  afterEach(() => vi.unstubAllGlobals());
+
+  type ToolReply = { result?: { content: { text: string }[]; isError?: boolean }; error?: { message: string } };
+
+  /** factory that records every client the handler builds — one per request */
+  function recordingHandler() {
+    const created: HermesbookClient[] = [];
+    const handler = createMcpHttpHandler(() => {
+      const c = new HermesbookClient("http://gw.test");
+      created.push(c);
+      return c;
+    });
+    return { handler, created };
+  }
+
+  it("a later caller without credentials never inherits the previous caller's join token", async () => {
+    const { handler, created } = recordingHandler();
+    const calls = stubFetch((call) =>
+      call.url.endsWith("/api/agent/join") ? JOIN_RESULT : { ok: true, order: {}, post: null },
+    );
+
+    // caller A joins — the token lands on A's request-scoped client
+    const joinRes = fakeRes();
+    await handler(
+      posted({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "join_town", arguments: { name: "Caller A" } } }),
+      joinRes,
+    );
+    const joinBody = joinRes.body as ToolReply;
+    expect(joinBody.error).toBeUndefined();
+    expect(JSON.parse(joinBody.result!.content[0]!.text).token).toBe(JOIN_RESULT.token);
+    expect(created).toHaveLength(1);
+    expect(created[0]!.token).toBe(JOIN_RESULT.token);
+
+    // caller B, no Authorization header — must NOT ride on A's token
+    const actRes = fakeRes();
+    await handler(
+      posted({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "act", arguments: { act: "work" } } }),
+      actRes,
+    );
+    const actBody = actRes.body as ToolReply;
+    expect(actBody.result?.isError).toBe(true);
+    expect(actBody.result!.content[0]!.text).toMatch(/join_town/); // "…call join_town first…"
+    expect(created).toHaveLength(2); // fresh client per request
+    expect(created[1]).not.toBe(created[0]);
+    expect(created[1]!.token).toBeUndefined(); // A's token is gone; env was cleaned
+    expect(calls).toHaveLength(1); // B's act never reached the gateway at all
+  });
+
+  it("Authorization: Bearer supplies the token for exactly that request", async () => {
+    const { handler, created } = recordingHandler();
+    const calls = stubFetch(() => ({ ok: true, order: {}, post: null }));
+
+    const actRes = fakeRes();
+    await handler(
+      {
+        method: "POST",
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "act", arguments: { act: "work", place: "square" } } }),
+        headers: { authorization: `Bearer ${JOIN_RESULT.token}` },
+      },
+      actRes,
+    );
+
+    const body = actRes.body as ToolReply;
+    expect(body.result?.isError).toBeUndefined();
+    expect(created).toHaveLength(1);
+    expect(created[0]!.token).toBe(JOIN_RESULT.token);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.headers.authorization).toBe(`Bearer ${JOIN_RESULT.token}`);
+  });
+
+  it("a batch shares one client: join_town then act inside the same request keep the token", async () => {
+    const { handler, created } = recordingHandler();
+    const calls = stubFetch((call) =>
+      call.url.endsWith("/api/agent/join") ? JOIN_RESULT : { ok: true, order: {}, post: null },
+    );
+
+    const res = fakeRes();
+    await handler(
+      posted([
+        { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "join_town", arguments: { name: "Caller A" } } },
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "act", arguments: { act: "work", place: "square" } } },
+      ]),
+      res,
+    );
+
+    const replies = res.body as (ToolReply & { id: number })[];
+    expect(Array.isArray(replies)).toBe(true);
+    expect(replies).toHaveLength(2);
+    expect(replies[1]!.result?.isError).toBeUndefined(); // act rode the join's token
+    expect(created).toHaveLength(1); // one client for the whole batch
+    const actCall = calls.find((c) => c.url.endsWith("/api/agent/act"));
+    expect(actCall?.headers.authorization).toBe(`Bearer ${JOIN_RESULT.token}`);
   });
 });

@@ -1,4 +1,5 @@
 import type { TownSnapshot } from "@hermesbook/shared";
+import { LOCATIONS } from "../canvas/locationsData.js";
 
 export function PaperView({ snapshot }: { snapshot: TownSnapshot }) {
   const edition = snapshot.editions[0];
@@ -64,4 +65,3 @@ export function PaperView({ snapshot }: { snapshot: TownSnapshot }) {
   );
 }
 
-const LOCATIONS = Array(26).fill(0);
