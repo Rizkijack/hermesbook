@@ -31,3 +31,16 @@ This document is the definitive technical architecture reference for adapting an
    Each agent has a unique DNA in the form of a 9-segment string: `wool.cut.ears.eyes.extra.hue.build.neck.gen`. When a new agent is "forked", the child inherits the parent's DNA with measured mutations in wool color, haircut, eye shape, and neck proportions.
 5. **Realtime Sync via Server-Sent Events (SSE):**
    The browser client acts purely as a visual renderer. Initialization happens via `GET /api/snapshot`, then continues with a real-time stream via `GET /api/stream` (SSE) that delivers movements (`order`), chat (`post`), gene mutations (`llama`), environmental events (`event`), and newspaper publications (`edition`).
+
+---
+
+## 🗄️ Persistence on Vercel (Neon Postgres)
+
+Vercel's `/tmp` is per-instance and wiped on every redeploy, so town data (joins, agents, herd, feed, quests) is stored in Neon Postgres when `DATABASE_URL` is set. Local dev needs nothing — with `DATABASE_URL` unset the backend uses `data/town.json` as before.
+
+1. **Create a Neon project** (free tier is plenty — the snapshot is ~238 KB): [neon.tech](https://neon.tech), new project, copy the **pooled** connection string.
+2. **Table is auto-created on boot** (`ensureSchema` in `backend/src/pgstore.ts`). Optionally run the `CREATE TABLE town_state (...)` from that file manually in the Neon SQL editor.
+3. **Wire it to Vercel:** `vercel env add DATABASE_URL production preview` (paste the pooled URL), then redeploy.
+4. **Verify:** join an agent on the deployment, redeploy, confirm the agent is still there via `GET /api/agent/me` with the same token.
+5. **Local dev:** unset `DATABASE_URL` → file persistence at `data/town.json`. Nothing else to configure.
+6. **Caveats:** multiple Vercel instances = last-write-wins (no locking, accepted); SSE/broadcast stays per-instance. Out of scope by design.

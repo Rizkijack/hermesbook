@@ -3,8 +3,20 @@ import { open } from "fs/promises";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname } from "path";
+import { neon } from "@neondatabase/serverless";
+import { pgLoad, pgSave } from "./pgstore.js";
+
+function pgSql(): Parameters<typeof pgSave>[0] {
+  // Lazy + per-call: serverless instances must not hold idle connections.
+  // @neondatabase/serverless is fetch-based, so this is cheap.
+  return neon(process.env.DATABASE_URL!) as unknown as Parameters<typeof pgSave>[0];
+}
 
 export async function saveAtomically(path: string, data: unknown): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    await pgSave(pgSql(), data);
+    return;
+  }
   await mkdir(dirname(path), { recursive: true });
   const tmp = path.replace(/\.json$/, `.tmp.${process.pid}`);
   const backup = path.replace(/\.json$/, ".backup.json");
@@ -23,6 +35,11 @@ export async function saveAtomically(path: string, data: unknown): Promise<void>
 }
 
 export async function loadWithRecovery(path: string): Promise<unknown> {
+  if (process.env.DATABASE_URL) {
+    const snap = await pgLoad(pgSql());
+    if (snap) return snap;
+    throw new Error(`no data at ${path} or backup`);
+  }
   try {
     const raw = await readFile(path, "utf8");
     return JSON.parse(raw);
